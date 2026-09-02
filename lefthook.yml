@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  commands:
+    go-lint:
+      glob: "*.go"
+      run: make lint-go
+    go-test:
+      glob: "*.go"
+      run: make test
+    proto-lint:
+      glob: "*.proto"
+      run: make lint-proto
+
+# A configuração do frontend (Next.js) será adicionada aqui futuramente
+# js-lint:
+#   glob: "*.{js,ts,jsx,tsx}"
+#   run: npm run lint
