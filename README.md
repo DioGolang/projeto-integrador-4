@@ -37,15 +37,15 @@ Este diagrama ilustra como os módulos internos interagem com a infraestrutura, 
 graph TD
     Merchant[Lojista] -->|Connect RPC / CreateOrder| API[🚢 API Service]
 
-subgraph Infrastructure
-DB[(PostgreSQL)]
-MQ[RabbitMQ]
-Redis[(Redis Geo)]
+subgraph Infrastructure ["Infrastructure"]
+    DB[(PostgreSQL)]
+    MQ[RabbitMQ]
+    Redis[(Redis Geo)]
 end
 
-subgraph Modular Monolith (Go)
-API -->|1. Persiste Pedido| DB
-API -->|2. Publica Evento| MQ
+subgraph Monolith ["Modular Monolith (Go)"]
+    API -->|1. Persiste Pedido| DB
+    API -->|2. Publica Evento| MQ
 
 Worker[👷 Dispatch Worker] -->|3. Consome| MQ
 Worker -->|4. Check Idempotência| DB
