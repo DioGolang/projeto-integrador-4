@@ -87,3 +87,4 @@ Para garantir que seu PR seja aprovado rapidamente:
 - **Mantenha-o pequeno:** PRs gigantescos (ex: +1500 linhas) demoram para ser revisados e têm alta chance de conter bugs ocultos. Quebre entregas grandes em PRs menores.
 - **Não ignore testes:** Se você criou uma regra de domínio no backend, anexe o teste unitário (cobertura exigida no pacote `domain` é de 100%).
 - **Cuidado com I/O:** Nunca adicione queries de banco na camada de HTTP ou de Negócio. Respeite as regras descritas no [Guia de Arquitetura](docs/architecture.md).
+- **Código em Inglês (English Only):** Como dita a boa prática de engenharia, todo o código-fonte (variáveis, funções, structs, arquivos e tabelas do banco) deve ser escrito estritamente em **Inglês** (ex: `GetOrder` e não `PegarPedido`). Deixe o português apenas para as documentações (como esta) e para o README.
