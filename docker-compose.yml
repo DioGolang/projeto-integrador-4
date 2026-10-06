@@ -1,4 +1,23 @@
 services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: logistics-api
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Sobrescreve as variáveis locais para conectar na rede do docker
+      - DB_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   postgres:
     image: postgis/postgis:18-master
     container_name: logistics-postgres
@@ -7,7 +26,7 @@ services:
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -84,11 +103,6 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:3100/ready"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.100.0
@@ -105,7 +119,7 @@ services:
       tempo:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
       prometheus:
         condition: service_healthy
 
@@ -128,6 +142,20 @@ services:
       tempo:
         condition: service_healthy
       loki:
+        condition: service_started
+
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    container_name: logistics-simulator
+    environment:
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - API_URL=http://api:8080
+    depends_on:
+      api:
+        condition: service_started
+      rabbitmq:
         condition: service_healthy
 
 volumes:
