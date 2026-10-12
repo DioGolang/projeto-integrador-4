@@ -1,0 +1,76 @@
+syntax = "proto3";
+package auth.v1;
+
+option go_package = "github.com/dvasconcellos/elo/api/gen/auth/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// Serviço de Autenticação e Gestão de Sessões (Zero Trust)
+service AuthService {
+  // Login inicial (com suporte a Device Fingerprinting)
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // Rotação do Refresh Token (Stateful & Hash-based)
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  // Revogação de sessão granular ou total
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // Fluxos de MFA (Multi-Factor Authentication)
+  rpc SetupMFA(SetupMFARequest) returns (SetupMFAResponse);
+  rpc VerifyMFA(VerifyMFARequest) returns (VerifyMFAResponse);
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+  string device_fingerprint = 3; // Hash único do hardware/OS/browser
+  string ip_address = 4;
+}
+
+message LoginResponse {
+  string access_token = 1; // JWT stateless de vida curta
+  string refresh_token = 2; // Token opaco de vida longa
+  bool requires_mfa = 3; // True se for um device novo ou usuário com MFA ativado
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+  string device_fingerprint = 2; // Validação estrita do device amarrado ao token
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message LogoutRequest {
+  // Se device_id não for informado, a revogação ocorre para a sessão do token atual
+  optional string device_id = 1; 
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message SetupMFARequest {
+  // Inicializa o processo de TOTP
+}
+
+message SetupMFAResponse {
+  string secret = 1;
+  string qr_code_url = 2;
+}
+
+message VerifyMFARequest {
+  string code = 1; // Código de 6 dígitos gerado pelo Authenticator
+  string device_fingerprint = 2;
+}
+
+message VerifyMFAResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
