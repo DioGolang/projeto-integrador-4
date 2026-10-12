@@ -1,0 +1,18 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/go
+    out: ../api/gen
+    opt: paths=source_relative
+  - plugin: buf.build/connectrpc/go:v1.16.2
+    out: ../api/gen
+    opt: paths=source_relative
+  - plugin: buf.build/bufbuild/es:v1.10.0
+    out: ../web/gen
+    opt:
+      - target=ts
+      - import_extension=none
+  - plugin: buf.build/connectrpc/es:v1.6.1
+    out: ../web/gen
+    opt:
+      - target=ts
+      - import_extension=none
