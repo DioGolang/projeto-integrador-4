@@ -1,0 +1,20 @@
+syntax = "proto3";
+package logistics.v1;
+
+option go_package = "github.com/dvasconcellos/elo/api/gen/logistics/v1";
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+  string merchant_id = 2;
+  double merchant_lat = 3;
+  double merchant_lng = 4;
+}
