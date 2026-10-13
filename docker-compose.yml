@@ -152,6 +152,9 @@ services:
     environment:
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       - API_URL=http://api:8080
+      - OSRM_URL=${OSRM_URL:-http://router.project-osrm.org/route/v1/driving}
+      - MOTO_SPEED_KMH=${MOTO_SPEED_KMH:-36.0}
+      - SIM_SPEED_FACTOR=${SIM_SPEED_FACTOR:-1.0}
     depends_on:
       api:
         condition: service_started
