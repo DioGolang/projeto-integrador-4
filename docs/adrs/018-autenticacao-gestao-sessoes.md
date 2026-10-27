@@ -1,14 +1,17 @@
 # ADR-018: Autenticação Avançada e Gestão de Sessões (Zero Trust)
 
 ## Status
+
 Aceito
 
 ## Contexto
+
 O nosso Motor Logístico exige um nível de segurança bancário (RNF09). Uma das maiores vulnerabilidades em sistemas de *gig economy* (aplicativos de entrega) é o aluguel de contas e o roubo de sessões (Account Takeover). 
 
 O uso de um JWT tradicional, 100% *stateless* e de vida longa, é insuficiente. Se um token JWT for roubado, não temos como revogá-lo facilmente até que ele expire. Além disso, precisamos saber se um entregador está repentinamente logando de um dispositivo não reconhecido (indicativo de conta alugada ou dispositivo roubado).
 
 ## Decisão
+
 Decidimos implementar uma arquitetura de identidade e gestão de sessões blindada baseada em estado parcial no banco de dados, compondo os seguintes pilares:
 
 1. **Multi-Factor Authentication (MFA):**
@@ -18,6 +21,7 @@ Decidimos implementar uma arquitetura de identidade e gestão de sessões blinda
    Toda tentativa de login deve enviar um *hash* único do dispositivo (combinação de hardware, OS e browser/app). A tabela `devices` mapeará quais dispositivos pertencem a quais usuários. Dispositivos novos ou não confiáveis passarão por fluxos de segurança adicionais (ex: forçar o MFA ou um *Liveness Check* via selfie).
 
 3. **Refresh Token Rotation (Com Hashing):**
+   
    - O **Access Token** (JWT) será estritamente *stateless* e de vida curta (ex: 15 minutos).
    - O **Refresh Token** será opaco (uma string aleatória forte) e de vida longa, mas será rigorosamente **stateful**. 
    - Por segurança, **jamais armazenaremos o Refresh Token em texto puro** na tabela `sessions`. Armazenaremos apenas o hash criptográfico (`refresh_token_hash`). Se o banco vazar (SQL Injection, etc), os tokens inativos não poderão ser usados por um atacante.
