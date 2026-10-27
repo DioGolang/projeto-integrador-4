@@ -5,18 +5,21 @@ services:
       dockerfile: Dockerfile
     container_name: logistics-api
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     environment:
       # Sobrescreve as variáveis locais para conectar na rede do docker
       - DB_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
 
   postgres:
     image: postgis/postgis:18-master
@@ -24,7 +27,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
@@ -37,7 +40,7 @@ services:
     image: redis:8-alpine
     container_name: logistics-redis
     ports:
-      - "${REDIS_PORT}:6379"
+      - "127.0.0.1:${REDIS_PORT}:6379"
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redisdata:/data
@@ -56,10 +59,12 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-      - "${RABBITMQ_PORT}:5672"
-      - "15672:15672"
+      - "127.0.0.1:${RABBITMQ_PORT}:5672"
+      - "127.0.0.1:15672:15672"
+      - "127.0.0.1:15692:15692"
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -70,9 +75,10 @@ services:
     image: prom/prometheus:v3.13.2
     container_name: logistics-prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerting_rules.yml:/etc/prometheus/alerting_rules.yml:ro
       - prometheusdata:/prometheus
     healthcheck:
       test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
@@ -88,7 +94,7 @@ services:
       - ./infra/tempo/tempo.yaml:/etc/tempo.yaml
       - tempodata:/var/tempo
     ports:
-      - "3200:3200" # Porta HTTP
+      - "127.0.0.1:3200:3200" # Porta HTTP
     expose:
       - "4317"      # OTLP gRPC
     healthcheck:
@@ -101,8 +107,10 @@ services:
     image: grafana/loki:3.7.7
     container_name: logistics-loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - lokidata:/tmp/loki
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.100.0
@@ -111,9 +119,11 @@ services:
     volumes:
       - ./infra/otel/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
     expose:
+      - "8888" # Internal telemetry metrics
       - "8889" # Prometheus metrics exporter
     depends_on:
       tempo:
@@ -127,14 +137,18 @@ services:
     image: grafana/grafana:13.2.1
     container_name: logistics-grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD environment variable must be explicitly configured and cannot be empty}
+      - GF_AUTH_ANONYMOUS_ENABLED=${GF_AUTH_ANONYMOUS_ENABLED:-false}
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=${GF_AUTH_ANONYMOUS_ORG_ROLE:-Viewer}
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
       - GF_FEATURE_TOGGLES_ENABLE=traceToMetrics
     volumes:
-      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafanadata:/var/lib/grafana
     depends_on:
       prometheus:
@@ -155,6 +169,9 @@ services:
       - OSRM_URL=${OSRM_URL:-http://router.project-osrm.org/route/v1/driving}
       - MOTO_SPEED_KMH=${MOTO_SPEED_KMH:-36.0}
       - SIM_SPEED_FACTOR=${SIM_SPEED_FACTOR:-1.0}
+      - DELIVERER_EMAIL=${DELIVERER_EMAIL:-entregador@elo.com}
+      - DELIVERER_PASSWORD=${DELIVERER_PASSWORD:-Entregador@123!}
+      - DELIVERER_FINGERPRINT=${DELIVERER_FINGERPRINT:-simulator-deliverer-worker-1}
     depends_on:
       api:
         condition: service_started
@@ -168,3 +185,4 @@ volumes:
   prometheusdata:
   tempodata:
   grafanadata:
+  lokidata:

@@ -2,31 +2,74 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: "0.0.0.0:4317"
       http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+  batch:
+    send_batch_size: 8192
+    timeout: 1s
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
 
 exporters:
   debug:
     verbosity: detailed
-  
+
   prometheus:
     endpoint: "0.0.0.0:8889"
+    namespace: "otel"
 
   otlp/tempo:
     endpoint: "tempo:4317"
     tls:
       insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 1m
 
   otlphttp/loki:
     endpoint: "http://loki:3100/otlp"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 1m
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [memory_limiter, batch]
       exporters: [debug, otlp/tempo]
     metrics:
       receivers: [otlp]
+      processors: [memory_limiter, batch]
       exporters: [debug, prometheus]
     logs:
       receivers: [otlp]
+      processors: [memory_limiter, batch]
       exporters: [debug, otlphttp/loki]
+  telemetry:
+    metrics:
+      address: "0.0.0.0:8888"

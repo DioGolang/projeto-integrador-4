@@ -1,0 +1,109 @@
+groups:
+  - name: gofleet_http_alerts
+    rules:
+      - alert: HTTPHigh5xxErrorRate
+        expr: >-
+          (sum(rate(app_http_duration_seconds_count{status_code=~"5.."}[5m]))
+          / sum(rate(app_http_duration_seconds_count[5m]))) * 100 > 5
+          and sum(rate(app_http_duration_seconds_count[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High HTTP 5xx error rate detected on API"
+          description: "HTTP 5xx error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes (threshold: > 5%)."
+
+      - alert: HTTPHighLatencyP95
+        expr: >-
+          histogram_quantile(0.95, sum(rate(app_http_duration_seconds_bucket[5m])) by (le)) > 1.0
+          and sum(rate(app_http_duration_seconds_count[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "HTTP P95 latency is exceeding threshold"
+          description: "API P95 request latency is {{ $value | printf \"%.3f\" }}s over the last 5 minutes (threshold: > 1.0s)."
+
+  - name: gofleet_database_alerts
+    rules:
+      - alert: PostgresConnectionPoolSaturation
+        expr: >-
+          (go_sql_in_use_connections{db_name="logistics_db"}
+          / go_sql_max_open_connections{db_name="logistics_db"}) * 100 > 85
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL connection pool near exhaustion"
+          description: "Database connection pool usage for logistics_db is at {{ $value | printf \"%.1f\" }}% of capacity (threshold: > 85%)."
+
+      - alert: PostgresConnectionWaitContention
+        expr: >-
+          rate(go_sql_wait_duration_seconds_total{db_name="logistics_db"}[5m]) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High contention waiting for database connections"
+          description: "Callers are waiting {{ $value | printf \"%.3f\" }} seconds per second to acquire database connections (threshold: > 0.2s/s)."
+
+  - name: gofleet_messaging_alerts
+    rules:
+      - alert: EventConsumerHighNackRate
+        expr: >-
+          sum(rate(app_event_consumer_messages_total{status="nack"}[5m])) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+          component: consumer
+        annotations:
+          summary: "Elevated NACK rate in RabbitMQ stream consumer"
+          description: "Consumer is NACKing events at {{ $value | printf \"%.2f\" }} msg/s over the last 5m, indicating downstream processing retries."
+
+      - alert: EventConsumerPoisonPillRejected
+        expr: >-
+          sum(rate(app_event_consumer_messages_total{status="reject"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: consumer
+        annotations:
+          summary: "Events are being permanently rejected by consumer"
+          description: "Consumer has permanently rejected malformed event payloads (rate: {{ $value | printf \"%.3f\" }} msg/s)."
+
+      - alert: OutboxWorkerPublishFailures
+        expr: >-
+          sum(rate(app_outbox_events_processed_total{status="failure"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "Outbox relay failing to publish events to RabbitMQ"
+          description: "Outbox worker failed to publish events to RabbitMQ at {{ $value | printf \"%.2f\" }} failures/s."
+
+  - name: gofleet_infrastructure_alerts
+    rules:
+      - alert: ServiceTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: infra
+        annotations:
+          summary: "Prometheus scrape target is down"
+          description: "Target {{ $labels.instance }} for job {{ $labels.job }} is unreachable."
+
+      - alert: CriticalServiceTargetMissing
+        expr: absent(up{job="logistics-api"}) == 1 or absent(up{job="rabbitmq"}) == 1
+        for: 1m
+        labels:
+          severity: critical
+          component: infra
+        annotations:
+          summary: "Critical service target is missing from Prometheus"
+          description: "A critical scrape target (logistics-api or rabbitmq) is completely absent from Prometheus discovery."

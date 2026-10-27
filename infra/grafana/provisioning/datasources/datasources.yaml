@@ -2,31 +2,46 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     url: http://prometheus:9090
     access: proxy
     isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 5s
 
   - name: Tempo
+    uid: tempo
     type: tempo
     url: http://tempo:3200
     access: proxy
     jsonData:
       tracesToLogsV2:
         datasourceUid: 'loki'
-        tags: ['trace_id']
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
+        tags: ['service']
         filterByTraceID: false
         filterBySpanID: false
+        customQuery: true
+        query: '{$$__tags} |= "$${__trace.id}"'
+      tracesToMetrics:
+        datasourceUid: 'prometheus'
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        queries:
+          - name: 'HTTP Latency'
+            query: 'sum(rate(app_http_duration_seconds_bucket[$$__rate_interval]))'
 
   - name: Loki
+    uid: loki
     type: loki
     url: http://loki:3100
     access: proxy
     jsonData:
       derivedFields:
         - datasourceUid: 'tempo'
-          matcherRegex: "trace_id=(\\w+)"
+          matcherRegex: '(?:\"trace_id\"|\"traceId\"|trace_id)[:=]\"?([a-fA-F0-9]{32})\"?'
           name: TraceID
           url: '$${__value.raw}'
