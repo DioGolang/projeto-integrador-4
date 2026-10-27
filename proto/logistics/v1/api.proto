@@ -20,6 +20,12 @@ service LogisticsService {
   // Atribuição de geometria de rota (Unary RPC)
   rpc AssignRoute(AssignRouteRequest) returns (AssignRouteResponse);
   
+  // RF05/RNF09: Conclusão física da corrida com validação de PIN e Geofencing (Unary RPC)
+  rpc CompleteDelivery(CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
+
+  // Desbloqueio operacional e auditoria de entrega congelada (Unary RPC - ADMIN only)
+  rpc UnfreezeDelivery(UnfreezeDeliveryRequest) returns (UnfreezeDeliveryResponse);
+
   // RF04/RNF06: Atualização em tempo real (Server Streaming RPC)
   rpc StreamOrderStatus(StreamOrderStatusRequest) returns (stream StreamOrderStatusResponse);
 }
@@ -62,7 +68,8 @@ message CreateOrderResponse {
   string order_id = 1;
   string status = 2;
   double delivery_fee = 3; // Frete calculado dinamicamente pelo backend
-  google.protobuf.Timestamp created_at = 4; 
+  google.protobuf.Timestamp created_at = 4;
+  string delivery_pin = 5; // Retornado exclusivamente na criação para o lojista/cliente final
 }
 
 // ---------------------------------------------------------
@@ -132,4 +139,36 @@ message AssignRouteRequest {
 message AssignRouteResponse {
   bool success = 1;
   int64 sequence = 2;
+}
+
+// ---------------------------------------------------------
+// Mensagens: Conclusão de Entrega (Regras Físicas)
+// ---------------------------------------------------------
+
+message CompleteDeliveryRequest {
+  string order_id = 1;
+  string delivery_pin = 2; // PIN de 4 dígitos informado pelo recebedor no ato da entrega
+  Coordinates current_position = 3; // Posição capturada no dispositivo no momento da entrega
+}
+
+message CompleteDeliveryResponse {
+  bool success = 1;
+  string status = 2; // "DELIVERED"
+  bool route_divergence_flag = 3; // true se concluído na zona de tolerância (50m - 300m)
+  double distance_meters = 4; // Distância geodésica calculada em metros
+  google.protobuf.Timestamp delivered_at = 5;
+}
+
+// ---------------------------------------------------------
+// Mensagens: Desbloqueio Operacional de Pedido Congelado
+// ---------------------------------------------------------
+
+message UnfreezeDeliveryRequest {
+  string order_id = 1;
+  string reason = 2; // Motivo da auditoria de desbloqueio operacional
+}
+
+message UnfreezeDeliveryResponse {
+  bool success = 1;
+  string status = 2; // "ACCEPTED"
 }
