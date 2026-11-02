@@ -400,6 +400,10 @@ type ProcessedEvent struct {
 	ConsumerID  string    `json:"consumer_id"`
 	EventID     string    `json:"event_id"`
 	ProcessedAt time.Time `json:"processed_at"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
 }
 
 type ProjectionCheckpoint struct {

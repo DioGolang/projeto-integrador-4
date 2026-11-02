@@ -662,6 +662,79 @@ func (q *Queries) GetPendingOutboxEvents(ctx context.Context, limit int32) ([]Ou
 	return items, nil
 }
 
+const getProcessedEvent = `-- name: GetProcessedEvent :one
+SELECT consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+FROM processed_events
+WHERE consumer_id = $1 AND event_id = $2
+`
+
+type GetProcessedEventParams struct {
+	ConsumerID string `json:"consumer_id"`
+	EventID    string `json:"event_id"`
+}
+
+type GetProcessedEventRow struct {
+	ConsumerID  string    `json:"consumer_id"`
+	EventID     string    `json:"event_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
+	ProcessedAt time.Time `json:"processed_at"`
+}
+
+func (q *Queries) GetProcessedEvent(ctx context.Context, arg GetProcessedEventParams) (GetProcessedEventRow, error) {
+	row := q.db.QueryRowContext(ctx, getProcessedEvent, arg.ConsumerID, arg.EventID)
+	var i GetProcessedEventRow
+	err := row.Scan(
+		&i.ConsumerID,
+		&i.EventID,
+		&i.AggregateID,
+		&i.Sequence,
+		&i.EventType,
+		&i.PayloadHash,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
+const getProcessedEventBySequence = `-- name: GetProcessedEventBySequence :one
+SELECT consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+FROM processed_events
+WHERE consumer_id = $1 AND aggregate_id = $2 AND sequence = $3
+`
+
+type GetProcessedEventBySequenceParams struct {
+	ConsumerID  string    `json:"consumer_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+}
+
+type GetProcessedEventBySequenceRow struct {
+	ConsumerID  string    `json:"consumer_id"`
+	EventID     string    `json:"event_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
+	ProcessedAt time.Time `json:"processed_at"`
+}
+
+func (q *Queries) GetProcessedEventBySequence(ctx context.Context, arg GetProcessedEventBySequenceParams) (GetProcessedEventBySequenceRow, error) {
+	row := q.db.QueryRowContext(ctx, getProcessedEventBySequence, arg.ConsumerID, arg.AggregateID, arg.Sequence)
+	var i GetProcessedEventBySequenceRow
+	err := row.Scan(
+		&i.ConsumerID,
+		&i.EventID,
+		&i.AggregateID,
+		&i.Sequence,
+		&i.EventType,
+		&i.PayloadHash,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
 const getProjectionCheckpoint = `-- name: GetProjectionCheckpoint :one
 SELECT last_sequence FROM projection_checkpoints WHERE projection_name = $1
 `
@@ -834,7 +907,7 @@ func (q *Queries) InsertAssignedRoute(ctx context.Context, arg InsertAssignedRou
 	return err
 }
 
-const insertDeliveryReadModel = `-- name: InsertDeliveryReadModel :exec
+const insertDeliveryReadModel = `-- name: InsertDeliveryReadModel :execrows
 INSERT INTO delivery_read_model (
     delivery_id, driver_id, state, sequence, 
     pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,
@@ -856,8 +929,8 @@ type InsertDeliveryReadModelParams struct {
 	ActiveRoute pqtype.NullRawMessage `json:"active_route"`
 }
 
-func (q *Queries) InsertDeliveryReadModel(ctx context.Context, arg InsertDeliveryReadModelParams) error {
-	_, err := q.db.ExecContext(ctx, insertDeliveryReadModel,
+func (q *Queries) InsertDeliveryReadModel(ctx context.Context, arg InsertDeliveryReadModelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertDeliveryReadModel,
 		arg.DeliveryID,
 		arg.DriverID,
 		arg.State,
@@ -867,6 +940,38 @@ func (q *Queries) InsertDeliveryReadModel(ctx context.Context, arg InsertDeliver
 		arg.DropoffLat,
 		arg.DropoffLng,
 		arg.ActiveRoute,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertProcessedEvent = `-- name: InsertProcessedEvent :exec
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+)
+`
+
+type InsertProcessedEventParams struct {
+	ConsumerID  string    `json:"consumer_id"`
+	EventID     string    `json:"event_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
+}
+
+func (q *Queries) InsertProcessedEvent(ctx context.Context, arg InsertProcessedEventParams) error {
+	_, err := q.db.ExecContext(ctx, insertProcessedEvent,
+		arg.ConsumerID,
+		arg.EventID,
+		arg.AggregateID,
+		arg.Sequence,
+		arg.EventType,
+		arg.PayloadHash,
 	)
 	return err
 }
@@ -1009,6 +1114,39 @@ func (q *Queries) RotateSessionRefreshToken(ctx context.Context, arg RotateSessi
 	return i, err
 }
 
+const tryInsertProcessedEvent = `-- name: TryInsertProcessedEvent :one
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+)
+ON CONFLICT (consumer_id, event_id) DO NOTHING
+RETURNING event_id
+`
+
+type TryInsertProcessedEventParams struct {
+	ConsumerID  string    `json:"consumer_id"`
+	EventID     string    `json:"event_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
+}
+
+func (q *Queries) TryInsertProcessedEvent(ctx context.Context, arg TryInsertProcessedEventParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, tryInsertProcessedEvent,
+		arg.ConsumerID,
+		arg.EventID,
+		arg.AggregateID,
+		arg.Sequence,
+		arg.EventType,
+		arg.PayloadHash,
+	)
+	var event_id string
+	err := row.Scan(&event_id)
+	return event_id, err
+}
+
 const unfreezeOrder = `-- name: UnfreezeOrder :one
 UPDATE orders
 SET status = 'ACCEPTED',
@@ -1075,7 +1213,7 @@ func (q *Queries) UpdateDelivererOnlineStatus(ctx context.Context, arg UpdateDel
 	return err
 }
 
-const updateDeliveryReadModel = `-- name: UpdateDeliveryReadModel :exec
+const updateDeliveryReadModel = `-- name: UpdateDeliveryReadModel :execrows
 UPDATE delivery_read_model
 SET state = $2, sequence = $3, updated_at = now()
 WHERE delivery_id = $1 AND sequence < $3
@@ -1087,12 +1225,15 @@ type UpdateDeliveryReadModelParams struct {
 	Sequence   int64     `json:"sequence"`
 }
 
-func (q *Queries) UpdateDeliveryReadModel(ctx context.Context, arg UpdateDeliveryReadModelParams) error {
-	_, err := q.db.ExecContext(ctx, updateDeliveryReadModel, arg.DeliveryID, arg.State, arg.Sequence)
-	return err
+func (q *Queries) UpdateDeliveryReadModel(ctx context.Context, arg UpdateDeliveryReadModelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateDeliveryReadModel, arg.DeliveryID, arg.State, arg.Sequence)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const updateDeliveryReadModelRoute = `-- name: UpdateDeliveryReadModelRoute :exec
+const updateDeliveryReadModelRoute = `-- name: UpdateDeliveryReadModelRoute :execrows
 UPDATE delivery_read_model
 SET sequence = $1::bigint,
     active_route = CASE
@@ -1112,14 +1253,17 @@ type UpdateDeliveryReadModelRouteParams struct {
 	DeliveryID   uuid.UUID       `json:"delivery_id"`
 }
 
-func (q *Queries) UpdateDeliveryReadModelRoute(ctx context.Context, arg UpdateDeliveryReadModelRouteParams) error {
-	_, err := q.db.ExecContext(ctx, updateDeliveryReadModelRoute,
+func (q *Queries) UpdateDeliveryReadModelRoute(ctx context.Context, arg UpdateDeliveryReadModelRouteParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateDeliveryReadModelRoute,
 		arg.Sequence,
 		arg.Revision,
 		arg.RoutePayload,
 		arg.DeliveryID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateOrderStatus = `-- name: UpdateOrderStatus :one
@@ -1234,18 +1378,32 @@ func (q *Queries) UpsertDevice(ctx context.Context, arg UpsertDeviceParams) (Dev
 }
 
 const upsertProcessedEvent = `-- name: UpsertProcessedEvent :exec
-INSERT INTO processed_events (consumer_id, event_id)
-VALUES ($1, $2)
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+)
 ON CONFLICT (consumer_id, event_id) DO NOTHING
 `
 
 type UpsertProcessedEventParams struct {
-	ConsumerID string `json:"consumer_id"`
-	EventID    string `json:"event_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	EventID     string    `json:"event_id"`
+	AggregateID uuid.UUID `json:"aggregate_id"`
+	Sequence    int64     `json:"sequence"`
+	EventType   string    `json:"event_type"`
+	PayloadHash string    `json:"payload_hash"`
 }
 
 func (q *Queries) UpsertProcessedEvent(ctx context.Context, arg UpsertProcessedEventParams) error {
-	_, err := q.db.ExecContext(ctx, upsertProcessedEvent, arg.ConsumerID, arg.EventID)
+	_, err := q.db.ExecContext(ctx, upsertProcessedEvent,
+		arg.ConsumerID,
+		arg.EventID,
+		arg.AggregateID,
+		arg.Sequence,
+		arg.EventType,
+		arg.PayloadHash,
+	)
 	return err
 }
 

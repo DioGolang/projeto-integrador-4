@@ -61,7 +61,7 @@ WHERE id = $1;
 SELECT ST_Y(address_geom::geometry) as lat, ST_X(address_geom::geometry) as lng FROM merchant_profiles
 WHERE user_id = $1 LIMIT 1;
 
--- name: InsertDeliveryReadModel :exec
+-- name: InsertDeliveryReadModel :execrows
 INSERT INTO delivery_read_model (
     delivery_id, driver_id, state, sequence, 
     pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,
@@ -70,12 +70,12 @@ INSERT INTO delivery_read_model (
     $1, $2, $3, $4, $5, $6, $7, $8, $9
 ) ON CONFLICT (delivery_id) DO NOTHING;
 
--- name: UpdateDeliveryReadModel :exec
+-- name: UpdateDeliveryReadModel :execrows
 UPDATE delivery_read_model
 SET state = $2, sequence = $3, updated_at = now()
 WHERE delivery_id = $1 AND sequence < $3;
 
--- name: UpdateDeliveryReadModelRoute :exec
+-- name: UpdateDeliveryReadModelRoute :execrows
 UPDATE delivery_read_model
 SET sequence = sqlc.arg('sequence')::bigint,
     active_route = CASE
@@ -124,9 +124,38 @@ WHERE projection_checkpoints.last_sequence < $2;
 -- name: GetProjectionCheckpoint :one
 SELECT last_sequence FROM projection_checkpoints WHERE projection_name = $1;
 
+-- name: InsertProcessedEvent :exec
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+);
+
+-- name: TryInsertProcessedEvent :one
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+)
+ON CONFLICT (consumer_id, event_id) DO NOTHING
+RETURNING event_id;
+
+-- name: GetProcessedEvent :one
+SELECT consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+FROM processed_events
+WHERE consumer_id = $1 AND event_id = $2;
+
+-- name: GetProcessedEventBySequence :one
+SELECT consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+FROM processed_events
+WHERE consumer_id = $1 AND aggregate_id = $2 AND sequence = $3;
+
 -- name: UpsertProcessedEvent :exec
-INSERT INTO processed_events (consumer_id, event_id)
-VALUES ($1, $2)
+INSERT INTO processed_events (
+    consumer_id, event_id, aggregate_id, sequence, event_type, payload_hash, processed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, now()
+)
 ON CONFLICT (consumer_id, event_id) DO NOTHING;
 
 -- name: CheckProcessedEvent :one

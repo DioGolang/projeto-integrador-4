@@ -31,6 +31,8 @@ type Querier interface {
 	GetOrderForDeliveryCompletion(ctx context.Context, arg GetOrderForDeliveryCompletionParams) (GetOrderForDeliveryCompletionRow, error)
 	GetPendingOrders(ctx context.Context) ([]Order, error)
 	GetPendingOutboxEvents(ctx context.Context, limit int32) ([]OutboxEvent, error)
+	GetProcessedEvent(ctx context.Context, arg GetProcessedEventParams) (GetProcessedEventRow, error)
+	GetProcessedEventBySequence(ctx context.Context, arg GetProcessedEventBySequenceParams) (GetProcessedEventBySequenceRow, error)
 	GetProjectionCheckpoint(ctx context.Context, projectionName string) (int64, error)
 	GetSessionByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetSessionForUpdate(ctx context.Context, refreshTokenHash string) (Session, error)
@@ -42,7 +44,8 @@ type Querier interface {
 	GetUserLoginState(ctx context.Context, userID uuid.UUID) (UserLoginState, error)
 	IncrementFailedPinAttempts(ctx context.Context, id uuid.UUID) (IncrementFailedPinAttemptsRow, error)
 	InsertAssignedRoute(ctx context.Context, arg InsertAssignedRouteParams) error
-	InsertDeliveryReadModel(ctx context.Context, arg InsertDeliveryReadModelParams) error
+	InsertDeliveryReadModel(ctx context.Context, arg InsertDeliveryReadModelParams) (int64, error)
+	InsertProcessedEvent(ctx context.Context, arg InsertProcessedEventParams) error
 	MarkOrderDelivered(ctx context.Context, arg MarkOrderDeliveredParams) (Order, error)
 	MarkOutboxEventProcessed(ctx context.Context, id uuid.UUID) error
 	NextAggregateSequence(ctx context.Context, deliveryID uuid.UUID) (int64, error)
@@ -50,11 +53,12 @@ type Querier interface {
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	RevokeUserSessions(ctx context.Context, userID uuid.UUID) error
 	RotateSessionRefreshToken(ctx context.Context, arg RotateSessionRefreshTokenParams) (Session, error)
+	TryInsertProcessedEvent(ctx context.Context, arg TryInsertProcessedEventParams) (string, error)
 	UnfreezeOrder(ctx context.Context, orderID uuid.UUID) (Order, error)
 	UpdateDelivererLocation(ctx context.Context, arg UpdateDelivererLocationParams) error
 	UpdateDelivererOnlineStatus(ctx context.Context, arg UpdateDelivererOnlineStatusParams) error
-	UpdateDeliveryReadModel(ctx context.Context, arg UpdateDeliveryReadModelParams) error
-	UpdateDeliveryReadModelRoute(ctx context.Context, arg UpdateDeliveryReadModelRouteParams) error
+	UpdateDeliveryReadModel(ctx context.Context, arg UpdateDeliveryReadModelParams) (int64, error)
+	UpdateDeliveryReadModelRoute(ctx context.Context, arg UpdateDeliveryReadModelRouteParams) (int64, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (User, error)
 	UpsertDevice(ctx context.Context, arg UpsertDeviceParams) (Device, error)
