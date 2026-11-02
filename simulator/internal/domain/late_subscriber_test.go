@@ -29,9 +29,9 @@ func (s *NaiveLiveStream) Subscribe() <-chan DomainEvent {
 
 // NaiveSubscriber implements the flawed protocol: Replay -> Subscribe
 type NaiveSubscriber struct {
-	store    EventStore
-	live     *NaiveLiveStream
-	State    *Delivery
+	store EventStore
+	live  *NaiveLiveStream
+	State *Delivery
 }
 
 func NewNaiveSubscriber(store EventStore, live *NaiveLiveStream) *NaiveSubscriber {
@@ -67,7 +67,7 @@ func (n *NaiveSubscriber) Bootstrap(ctx context.Context, aggregateID string, pau
 // This test intentionally demonstrates the fatal flaw in the Naive Handoff Protocol.
 func TestLateSubscriber_NaiveProtocol_MissesEventsDuringHandoff(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Pre-fill history with 1, 2, 3
 	store := NewMemoryEventStore()
 	store.events["D1"] = []DomainEvent{

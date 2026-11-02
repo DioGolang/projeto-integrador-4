@@ -9,14 +9,14 @@ import (
 )
 
 type Prometheus struct {
-	orderCreated     *prometheus.CounterVec
-	orderDispatched  *prometheus.CounterVec
-	useCaseTotal     *prometheus.CounterVec
-	useCaseDuration  *prometheus.HistogramVec
-	httpDuration     *prometheus.HistogramVec
-	grpcDuration     *prometheus.HistogramVec
-	cacheHits        *prometheus.CounterVec
-	cacheMisses      *prometheus.CounterVec
+	orderCreated           *prometheus.CounterVec
+	orderDispatched        *prometheus.CounterVec
+	useCaseTotal           *prometheus.CounterVec
+	useCaseDuration        *prometheus.HistogramVec
+	httpDuration           *prometheus.HistogramVec
+	grpcDuration           *prometheus.HistogramVec
+	cacheHits              *prometheus.CounterVec
+	cacheMisses            *prometheus.CounterVec
 	outboxEvents           *prometheus.CounterVec
 	outboxPendingEvents    prometheus.Gauge
 	outboxOldestPendingAge prometheus.Gauge

@@ -18,14 +18,14 @@ const bcryptCost = 12
 
 // SeedConfig holds configuration options for database seeding.
 type SeedConfig struct {
-	AppEnv               string
-	AllowProductionSeed  bool
-	MerchantEmail        string
-	MerchantPassword     string
-	DelivererEmail       string
-	DelivererPassword    string
-	AdminEmail           string
-	AdminPassword        string
+	AppEnv              string
+	AllowProductionSeed bool
+	MerchantEmail       string
+	MerchantPassword    string
+	DelivererEmail      string
+	DelivererPassword   string
+	AdminEmail          string
+	AdminPassword       string
 }
 
 type seedUser struct {

@@ -22,12 +22,12 @@ import (
 )
 
 type OutboxEventPayload struct {
-	OrderID     string  `json:"order_id"`
-	MerchantID  string  `json:"merchant_id"`
-	PickupLat   float64 `json:"pickup_lat"`
-	PickupLng   float64 `json:"pickup_lng"`
-	DropoffLat  float64 `json:"dropoff_lat"`
-	DropoffLng  float64 `json:"dropoff_lng"`
+	OrderID    string  `json:"order_id"`
+	MerchantID string  `json:"merchant_id"`
+	PickupLat  float64 `json:"pickup_lat"`
+	PickupLng  float64 `json:"pickup_lng"`
+	DropoffLat float64 `json:"dropoff_lat"`
+	DropoffLng float64 `json:"dropoff_lng"`
 }
 
 func main() {

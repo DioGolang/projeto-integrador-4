@@ -129,7 +129,7 @@ func TestRecovery_RejectsAnomaliesAfterSnapshot(t *testing.T) {
 	events.events["D1"] = []DomainEvent{
 		EventDeliveryCompleted{ID: "ev-x", DeliveryID: "D2", Seq: 3}, // WRONG AGGREGATE!
 	}
-	
+
 	_, err = recovery.Recover(ctx, "D1")
 	if err == nil {
 		t.Fatal("expected recovery to fail due to wrong aggregate")
@@ -147,7 +147,7 @@ func TestRecovery_WithoutSnapshotRequiresInitialStateBootstrap(t *testing.T) {
 	snapshots := NewMemorySnapshotStore()
 	recovery := NewRecovery(snapshots, events)
 
-	// Since we don't have a DeliveryCreated event, the Recover function 
+	// Since we don't have a DeliveryCreated event, the Recover function
 	// bootstraps a bare-bones Delivery if no snapshot exists.
 	// Let's ensure a full replay from 0 works on it.
 	events.events["D1"] = []DomainEvent{

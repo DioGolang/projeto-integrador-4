@@ -45,7 +45,7 @@ type OSRMResponse struct {
 func (p *OSRMRouteProvider) Route(ctx context.Context, from domain.Coordinate, to domain.Coordinate) (domain.Route, error) {
 	// OSRM format: {lng},{lat};{lng},{lat}
 	url := fmt.Sprintf("%s/%f,%f;%f,%f?overview=full&geometries=geojson", p.baseURL, from.Lng, from.Lat, to.Lng, to.Lat)
-	
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return domain.Route{}, fmt.Errorf("failed to create osrm request: %w", err)

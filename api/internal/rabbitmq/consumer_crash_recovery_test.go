@@ -133,11 +133,11 @@ func setupCrashTestDB(t *testing.T) *sql.DB {
 // 3. Broker redelivers the unacknowledged message to Consumer 2 with redelivered=true.
 // 4. Consumer 2 boots cold (empty in-memory SequenceValidator) and handles the redelivered message.
 // 5. Test verifies:
-//    - Broker sets redelivered=true on redelivery.
-//    - SQL read model remains unique and uncorrupted.
-//    - Checkpoint does not advance or regress incorrectly.
-//    - Consumer 2 sends basic.ack, draining the queue to 0.
-//    - LiveHub DOES NOT emit duplicate SSE notifications for the already-persisted event.
+//   - Broker sets redelivered=true on redelivery.
+//   - SQL read model remains unique and uncorrupted.
+//   - Checkpoint does not advance or regress incorrectly.
+//   - Consumer 2 sends basic.ack, draining the queue to 0.
+//   - LiveHub DOES NOT emit duplicate SSE notifications for the already-persisted event.
 func TestGate15A2_CrashAfterSQLCommitBeforeACK(t *testing.T) {
 	amqpURL := getCrashTestAMQPURL()
 	dbConn := setupCrashTestDB(t)
@@ -437,15 +437,16 @@ func (p *crashPreCommitTarget) Apply(ctx context.Context, ev delivery.DomainEven
 // 1. Mensagem recebida pelo Consumer 1.
 // 2. Transação SQL é aberta, dados são escritos no buffer da transação, mas o processo sofre crash ANTES de tx.Commit().
 // 3. Verificações pré-restart:
-//    - Critério 1: Transação sofreu rollback, zero alterações parciais persistidas no PostgreSQL.
-//    - Critério 2: Checkpoint da projeção não avançou (0 registros).
-//    - Critério 3: LiveHub não emitiu nenhuma notificação prematura durante a tentativa que falhou.
+//   - Critério 1: Transação sofreu rollback, zero alterações parciais persistidas no PostgreSQL.
+//   - Critério 2: Checkpoint da projeção não avançou (0 registros).
+//   - Critério 3: LiveHub não emitiu nenhuma notificação prematura durante a tentativa que falhou.
+//
 // 4. Broker re-entrega a mensagem para Consumer 2 com flag redelivered=true (Critério 4: Mensagem recuperável no RabbitMQ).
 // 5. Consumer 2 (novo processo) processa com sucesso:
-//    - Critério 5: Evento é aplicado com integridade no PostgreSQL pós-restart (count=1, seq=1).
-//    - Critério 6: Checkpoint avança para a posição correspondente.
-//    - Critério 7: Fila drenada e zerada após ACK do Consumer 2.
-//    - Critério 8: LiveHub emite EXATAMENTE UMA notificação legítima em todo o ciclo de vida.
+//   - Critério 5: Evento é aplicado com integridade no PostgreSQL pós-restart (count=1, seq=1).
+//   - Critério 6: Checkpoint avança para a posição correspondente.
+//   - Critério 7: Fila drenada e zerada após ACK do Consumer 2.
+//   - Critério 8: LiveHub emite EXATAMENTE UMA notificação legítima em todo o ciclo de vida.
 func TestGate15A1_CrashBeforeSQLCommit(t *testing.T) {
 	amqpURL := getCrashTestAMQPURL()
 	dbConn := setupCrashTestDB(t)
@@ -752,10 +753,10 @@ func publishCrashTestEnvelope(t *testing.T, dbConn *sql.DB, ch *amqp.Channel, qu
 // 6. Consumer 2 confirma o evento 1 com basic.ack.
 // 7. Evento subsequente (Seq 2: DriverArrivedAtPickup) é publicado, consumido e aplicado com sucesso (Critério 6).
 // 8. Asserções finais:
-//    - Read model: exatamente 1 entrega, estado AT_PICKUP, seq=2.
-//    - Checkpoint: avança para a posição da mensagem 2.
-//    - Fila RabbitMQ: drenada e zerada.
-//    - LiveHub: exatamente 2 notificações emitidas ao todo (1 por evento legítimo).
+//   - Read model: exatamente 1 entrega, estado AT_PICKUP, seq=2.
+//   - Checkpoint: avança para a posição da mensagem 2.
+//   - Fila RabbitMQ: drenada e zerada.
+//   - LiveHub: exatamente 2 notificações emitidas ao todo (1 por evento legítimo).
 func TestGate15A3a_FailureBeforeACKReachesBroker(t *testing.T) {
 	amqpURL := getCrashTestAMQPURL()
 	dbConn := setupCrashTestDB(t)
@@ -1000,9 +1001,9 @@ func TestGate15A3a_FailureBeforeACKReachesBroker(t *testing.T) {
 // 4. Consumer 2 conecta; Critério 4 (1.5A-3b): Mensagem 1 NÃO é reentregue pelo broker (foi definitivamente removida).
 // 5. Evento subsequente (Seq 2: DriverArrivedAtPickup) é publicado, consumido e aplicado com sucesso (Critério 6).
 // 6. Asserções finais:
-//    - Read model: exatamente 1 entrega, estado AT_PICKUP, seq=2.
-//    - Checkpoint: avança para a posição da mensagem 2.
-//    - LiveHub: exatamente 2 notificações emitidas ao todo (1 por evento legítimo).
+//   - Read model: exatamente 1 entrega, estado AT_PICKUP, seq=2.
+//   - Checkpoint: avança para a posição da mensagem 2.
+//   - LiveHub: exatamente 2 notificações emitidas ao todo (1 por evento legítimo).
 func TestGate15A3b_FailureAfterACKProcessedByBroker(t *testing.T) {
 	amqpURL := getCrashTestAMQPURL()
 	dbConn := setupCrashTestDB(t)
@@ -1251,21 +1252,23 @@ func TestGate15A3b_FailureAfterACKProcessedByBroker(t *testing.T) {
 // 4. Criar o Consumidor 2 com SequenceValidator completamente vazio (sem memória do agregado).
 // 5. Validar que o checkpoint persistido está intacto no PostgreSQL (proj2.GetCheckpoint == 100903).
 // 6. Publicar uma duplicata antiga (sequence=2, stream_position=100902):
-//    - O Consumidor 2 reconhece a duplicata através da reconciliação com o estado persistido;
-//    - Não há alteração no read model (não regride nem duplica);
-//    - Não há alteração ou regressão no checkpoint;
-//    - O LiveHub NÃO emite notificação para o evento duplicado;
-//    - A mensagem é confirmada com basic.ack.
+//   - O Consumidor 2 reconhece a duplicata através da reconciliação com o estado persistido;
+//   - Não há alteração no read model (não regride nem duplica);
+//   - Não há alteração ou regressão no checkpoint;
+//   - O LiveHub NÃO emite notificação para o evento duplicado;
+//   - A mensagem é confirmada com basic.ack.
+//
 // 7. Publicar o próximo evento legítimo (sequence=4: DeliveryCompleted, stream_position=100904):
-//    - O Consumidor 2 aplica com sucesso o evento no read model (sequence=4, state=DELIVERED);
-//    - O checkpoint global avança para 100904;
-//    - O LiveHub emite EXATAMENTE uma notificação para o novo evento legítimo;
-//    - A mensagem é confirmada com basic.ack.
+//   - O Consumidor 2 aplica com sucesso o evento no read model (sequence=4, state=DELIVERED);
+//   - O checkpoint global avança para 100904;
+//   - O LiveHub emite EXATAMENTE uma notificação para o novo evento legítimo;
+//   - A mensagem é confirmada com basic.ack.
+//
 // 8. Asserções finais de integridade:
-//    - Read model: exatamente 1 registro, sequence=4, state=DELIVERED.
-//    - Checkpoint: exatamente 100904.
-//    - LiveHub: exatamente 4 notificações ao todo (ev1, ev2, ev3, ev4 - zero para a duplicata).
-//    - Fila RabbitMQ: completamente drenada e zerada.
+//   - Read model: exatamente 1 registro, sequence=4, state=DELIVERED.
+//   - Checkpoint: exatamente 100904.
+//   - LiveHub: exatamente 4 notificações ao todo (ev1, ev2, ev3, ev4 - zero para a duplicata).
+//   - Fila RabbitMQ: completamente drenada e zerada.
 func TestGate15A4_ColdRestartWithPersistedCheckpoint(t *testing.T) {
 	amqpURL := getCrashTestAMQPURL()
 	dbConn := setupCrashTestDB(t)
@@ -1632,16 +1635,18 @@ func TestGate15A4_ColdRestartWithPersistedCheckpoint(t *testing.T) {
 // e retomando com um consumidor novo a frio até a reconciliação completa.
 //
 // Ordem de Publicação dos 10 Eventos:
-//  1: Agregado A, Seq 1 (DeliveryCreated, stream_pos=101001)
-//  2: Agregado B, Seq 1 (DeliveryCreated, stream_pos=101002)
-//  3: Agregado A, Seq 2 (DriverArrivedAtPickup, stream_pos=101003)
-//  4: Agregado B, Seq 2 (DriverArrivedAtPickup, stream_pos=101004)
-//  --- PONTO DETERMINÍSTICO DE INTERRUPÇÃO (Consumer 1 fecha conexão) ---
-//  5: Agregado A, Seq 3 (DeliveryRouteAssigned, stream_pos=101005)
-//  6: Agregado B, Seq 3 (DeliveryRouteAssigned, stream_pos=101006)
-//  7: Agregado A, Seq 4 (DriverEnRouteToDropoff, stream_pos=101007)
-//  8: Agregado B, Seq 4 (DriverEnRouteToDropoff, stream_pos=101008)
-//  9: Agregado A, Seq 5 (DeliveryCompleted, stream_pos=101009)
+//
+//	1: Agregado A, Seq 1 (DeliveryCreated, stream_pos=101001)
+//	2: Agregado B, Seq 1 (DeliveryCreated, stream_pos=101002)
+//	3: Agregado A, Seq 2 (DriverArrivedAtPickup, stream_pos=101003)
+//	4: Agregado B, Seq 2 (DriverArrivedAtPickup, stream_pos=101004)
+//	--- PONTO DETERMINÍSTICO DE INTERRUPÇÃO (Consumer 1 fecha conexão) ---
+//	5: Agregado A, Seq 3 (DeliveryRouteAssigned, stream_pos=101005)
+//	6: Agregado B, Seq 3 (DeliveryRouteAssigned, stream_pos=101006)
+//	7: Agregado A, Seq 4 (DriverEnRouteToDropoff, stream_pos=101007)
+//	8: Agregado B, Seq 4 (DriverEnRouteToDropoff, stream_pos=101008)
+//	9: Agregado A, Seq 5 (DeliveryCompleted, stream_pos=101009)
+//
 // 10: Agregado B, Seq 5 (DeliveryCompleted, stream_pos=101010)
 //
 // Cuidados metodológicos atendidos:
@@ -2092,6 +2097,3 @@ func TestGate15A5_HeterogeneousBatchCrashAndReconciliation(t *testing.T) {
 
 	t.Log("=== TESTE 1.5A-5 (LOTE HETEROGÊNEO COM CRASH E RECONCILIAÇÃO) CONCLUÍDO COM SUCESSO ===")
 }
-
-
-

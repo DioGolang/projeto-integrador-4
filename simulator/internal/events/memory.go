@@ -39,4 +39,3 @@ func (p *MemoryPublisher) Clear() {
 	defer p.mu.Unlock()
 	p.events = make([]domain.DomainEvent, 0)
 }
-

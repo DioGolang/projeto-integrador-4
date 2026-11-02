@@ -499,7 +499,7 @@ func TestAuthInterceptor_AdversarialHTTPTokens(t *testing.T) {
 	t.Run("rejects_token_with_wrong_issuer", func(t *testing.T) {
 		wrongIssMgr, err := auth.NewHMACJWTManager(auth.JWTConfig{
 			SecretKey: []byte("this_is_a_very_secure_test_secret_32_bytes!!"), // same secret
-			Issuer:    "adversary.auth",                               // wrong issuer
+			Issuer:    "adversary.auth",                                       // wrong issuer
 			Audience:  "gofleet.api",
 			TTL:       15 * time.Minute,
 		})
@@ -582,4 +582,3 @@ func TestAuthInterceptor_AdversarialHTTPTokens(t *testing.T) {
 		}
 	})
 }
-

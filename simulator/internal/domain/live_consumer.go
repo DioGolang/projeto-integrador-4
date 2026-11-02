@@ -5,7 +5,7 @@ import (
 )
 
 // LiveConsumer coordinates the real-time processing of events.
-// It enforces causal guarantees by inspecting the sequence and 
+// It enforces causal guarantees by inspecting the sequence and
 // delegating to GapRecoverer when a gap is detected, before applying the live event.
 type LiveConsumer struct {
 	delivery  *Delivery
@@ -42,10 +42,10 @@ func (c *LiveConsumer) Consume(ctx context.Context, event DomainEvent) error {
 		if err := c.recovery.RecoverUntil(ctx, c.delivery, c.validator, event.Sequence()); err != nil {
 			return err
 		}
-		
-		// If recovery was successful, it means the historical reconstruction 
-		// ALREADY APPLIED the missing events, INCLUDING this very live event 
-		// (since it was fetched from the EventStore). 
+
+		// If recovery was successful, it means the historical reconstruction
+		// ALREADY APPLIED the missing events, INCLUDING this very live event
+		// (since it was fetched from the EventStore).
 		// Thus, we do not need to apply it again. The cursor is already updated!
 		return nil
 	}

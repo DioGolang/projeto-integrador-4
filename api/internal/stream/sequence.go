@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	ErrDuplicateEvent     = errors.New("duplicate event")
-	ErrGapDetected        = errors.New("gap detected")
-	ErrUnknownAggregate   = errors.New("unknown aggregate")
-	ErrUnrecoverableGap   = errors.New("unrecoverable gap in event stream")
+	ErrDuplicateEvent   = errors.New("duplicate event")
+	ErrGapDetected      = errors.New("gap detected")
+	ErrUnknownAggregate = errors.New("unknown aggregate")
+	ErrUnrecoverableGap = errors.New("unrecoverable gap in event stream")
 )
 
 type SequenceValidator struct {

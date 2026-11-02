@@ -17,11 +17,16 @@ const (
 
 func (s HandoffState) String() string {
 	switch s {
-	case HandoffBuffering: return "BUFFERING"
-	case HandoffReplaying: return "REPLAYING"
-	case HandoffDraining:  return "DRAINING"
-	case HandoffLive:      return "LIVE"
-	default:               return "UNKNOWN"
+	case HandoffBuffering:
+		return "BUFFERING"
+	case HandoffReplaying:
+		return "REPLAYING"
+	case HandoffDraining:
+		return "DRAINING"
+	case HandoffLive:
+		return "LIVE"
+	default:
+		return "UNKNOWN"
 	}
 }
 
@@ -94,7 +99,7 @@ func (h *BufferedHandoff) Start(ctx context.Context, liveStream <-chan StreamEve
 	if err != nil {
 		return err
 	}
-	
+
 	for _, ev := range history {
 		err := h.consumer.Consume(ctx, ev.DomainEvent)
 		if err != nil {
@@ -104,7 +109,7 @@ func (h *BufferedHandoff) Start(ctx context.Context, liveStream <-chan StreamEve
 
 	// 4. DRAIN BUFFER
 	h.State = HandoffDraining
-	
+
 drainLoop:
 	for {
 		select {
@@ -133,6 +138,6 @@ drainLoop:
 			_ = h.consumer.Consume(ctx, ev.DomainEvent)
 		}
 	}()
-	
+
 	return nil
 }

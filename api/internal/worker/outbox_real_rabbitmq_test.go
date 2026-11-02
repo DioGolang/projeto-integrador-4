@@ -746,7 +746,7 @@ func TestOutbox_RealRabbitMQ_BatchAndConcurrentUnroutableStress(t *testing.T) {
 
 		for i := 0; i < perIteration; i++ {
 			msgUUID := uuid.New()
-			isRoutable := (i % 2 == 0)
+			isRoutable := (i%2 == 0)
 			eventType := routableKey
 			if !isRoutable {
 				eventType = unroutableKey
@@ -883,6 +883,3 @@ func TestOutbox_RealRabbitMQ_BatchWithUnroutableLeavesPendingInDB(t *testing.T) 
 
 	t.Logf("Database verification passed: unroutable event %s remained strictly PENDING in outbox_events.", unroutableUUID)
 }
-
-
-

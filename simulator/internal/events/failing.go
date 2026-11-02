@@ -9,10 +9,10 @@ import (
 )
 
 type FailingPublisher struct {
-	mu           sync.Mutex
-	FailAfter    int
-	calls        int
-	Published    []domain.DomainEvent
+	mu        sync.Mutex
+	FailAfter int
+	calls     int
+	Published []domain.DomainEvent
 }
 
 func NewFailingPublisher(failAfter int) *FailingPublisher {

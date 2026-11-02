@@ -41,12 +41,12 @@ func (p *RabbitMQPublisher) Publish(ctx context.Context, event outbox.OutboxEven
 		EventType:      event.EventType,
 		Payload:        event.Payload,
 	}
-	
+
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal amqp message: %w", err)
 	}
-	
+
 	routingKey := fmt.Sprintf("%s.%s", event.AggregateType, event.EventType)
 
 	err = p.channel.PublishWithContext(
@@ -62,10 +62,10 @@ func (p *RabbitMQPublisher) Publish(ctx context.Context, event outbox.OutboxEven
 			Body:        body,
 		},
 	)
-	
+
 	if err != nil {
 		return fmt.Errorf("amqp publish: %w", err)
 	}
-	
+
 	return nil
 }

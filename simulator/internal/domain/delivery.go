@@ -21,10 +21,15 @@ type Action interface {
 }
 
 type ActionPickupReached struct{}
+
 func (ActionPickupReached) ActionName() string { return "PickupReached" }
+
 type ActionPickupCompleted struct{}
+
 func (ActionPickupCompleted) ActionName() string { return "PickupCompleted" }
+
 type ActionDropoffReached struct{}
+
 func (ActionDropoffReached) ActionName() string { return "DropoffReached" }
 
 // DomainEvent interface for output events
@@ -41,11 +46,10 @@ type EventDriverArrivedAtPickup struct {
 	Seq        int64
 }
 
-func (e EventDriverArrivedAtPickup) EventID() string { return e.ID }
+func (e EventDriverArrivedAtPickup) EventID() string     { return e.ID }
 func (e EventDriverArrivedAtPickup) AggregateID() string { return e.DeliveryID }
-func (e EventDriverArrivedAtPickup) Sequence() int64 { return e.Seq }
-func (e EventDriverArrivedAtPickup) EventName() string { return "DriverArrivedAtPickup" }
-
+func (e EventDriverArrivedAtPickup) Sequence() int64     { return e.Seq }
+func (e EventDriverArrivedAtPickup) EventName() string   { return "DriverArrivedAtPickup" }
 
 type EventDriverEnRouteToDropoff struct {
 	ID         string
@@ -53,11 +57,10 @@ type EventDriverEnRouteToDropoff struct {
 	Seq        int64
 }
 
-func (e EventDriverEnRouteToDropoff) EventID() string { return e.ID }
+func (e EventDriverEnRouteToDropoff) EventID() string     { return e.ID }
 func (e EventDriverEnRouteToDropoff) AggregateID() string { return e.DeliveryID }
-func (e EventDriverEnRouteToDropoff) Sequence() int64 { return e.Seq }
-func (e EventDriverEnRouteToDropoff) EventName() string { return "DriverEnRouteToDropoff" }
-
+func (e EventDriverEnRouteToDropoff) Sequence() int64     { return e.Seq }
+func (e EventDriverEnRouteToDropoff) EventName() string   { return "DriverEnRouteToDropoff" }
 
 type EventDeliveryCompleted struct {
 	ID         string
@@ -65,10 +68,10 @@ type EventDeliveryCompleted struct {
 	Seq        int64
 }
 
-func (e EventDeliveryCompleted) EventID() string { return e.ID }
+func (e EventDeliveryCompleted) EventID() string     { return e.ID }
 func (e EventDeliveryCompleted) AggregateID() string { return e.DeliveryID }
-func (e EventDeliveryCompleted) Sequence() int64 { return e.Seq }
-func (e EventDeliveryCompleted) EventName() string { return "DeliveryCompleted" }
+func (e EventDeliveryCompleted) Sequence() int64     { return e.Seq }
+func (e EventDeliveryCompleted) EventName() string   { return "DeliveryCompleted" }
 
 var ErrInvalidTransition = errors.New("invalid state transition")
 

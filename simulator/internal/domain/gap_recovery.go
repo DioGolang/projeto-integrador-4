@@ -8,7 +8,7 @@ import (
 // GapRecoverer is responsible for fetching historical events to bridge
 // causal gaps detected by the SequenceValidator.
 type GapRecoverer struct {
-	store     EventStore
+	store EventStore
 }
 
 func NewGapRecoverer(store EventStore) *GapRecoverer {

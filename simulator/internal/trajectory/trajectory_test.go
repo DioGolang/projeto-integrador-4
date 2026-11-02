@@ -44,7 +44,7 @@ func TestPositionAt_BeforeStart(t *testing.T) {
 	}
 
 	traj, _ := NewTrajectory(route)
-	
+
 	if pos := traj.PositionAt(-1 * time.Second); pos != start {
 		t.Errorf("expected %v for elapsed < 0, got %v", start, pos)
 	}
@@ -59,7 +59,7 @@ func TestPositionAt_AfterEnd(t *testing.T) {
 	}
 
 	traj, _ := NewTrajectory(route)
-	
+
 	if pos := traj.PositionAt(15 * time.Second); pos != end {
 		t.Errorf("expected %v for elapsed > duration, got %v", end, pos)
 	}
@@ -74,7 +74,7 @@ func TestPositionAt_Midpoint(t *testing.T) {
 	}
 
 	traj, _ := NewTrajectory(route)
-	
+
 	mid := traj.PositionAt(5 * time.Second)
 	// We expect roughly {Lat: 0, Lng: 5}
 	if mid.Lat != 0 || mid.Lng != 5 {
@@ -88,14 +88,14 @@ func TestPositionAt_ThreePointsInterpolation(t *testing.T) {
 	p0 := domain.Coordinate{Lat: 0, Lng: 0}
 	p1 := domain.Coordinate{Lat: 0, Lng: 10}
 	p2 := domain.Coordinate{Lat: 0, Lng: 20}
-	
+
 	route := domain.Route{
 		Points:   []domain.Coordinate{p0, p1, p2},
 		Duration: 20 * time.Second,
 	}
 
 	traj, _ := NewTrajectory(route)
-	
+
 	atB := traj.PositionAt(10 * time.Second)
 	if atB.Lng != 10 {
 		t.Errorf("expected Lng to be 10 at 50%% time, got %f", atB.Lng)

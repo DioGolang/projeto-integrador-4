@@ -1082,4 +1082,3 @@ func (s *LogisticsService) UnfreezeDelivery(
 
 	return connect.NewResponse(response), nil
 }
-

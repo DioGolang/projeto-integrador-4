@@ -793,4 +793,3 @@ func TestLogisticsService_AssignRoute_AuthorizationMatrix(t *testing.T) {
 		}
 	})
 }
-

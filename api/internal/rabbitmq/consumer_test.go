@@ -83,9 +83,9 @@ func (m *mockConsumerMetrics) ObserveHTTPRequestDuration(method, path, statusCod
 }
 func (m *mockConsumerMetrics) ObserveGRPCRequestDuration(service, method, code string, duration float64) {
 }
-func (m *mockConsumerMetrics) IncCacheHit(cacheType string)           {}
-func (m *mockConsumerMetrics) IncCacheMiss(cacheType string)          {}
-func (m *mockConsumerMetrics) IncOutboxEventsProcessed(status string) {}
+func (m *mockConsumerMetrics) IncCacheHit(cacheType string)                     {}
+func (m *mockConsumerMetrics) IncCacheMiss(cacheType string)                    {}
+func (m *mockConsumerMetrics) IncOutboxEventsProcessed(status string)           {}
 func (m *mockConsumerMetrics) SetOutboxPending(count, oldestAgeSeconds float64) {}
 func (m *mockConsumerMetrics) RecordConsumerEvent(eventType, status string, redelivered bool, duration time.Duration) {
 	m.events = append(m.events, recordedConsumerMetric{

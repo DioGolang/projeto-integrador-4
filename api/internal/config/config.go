@@ -26,16 +26,16 @@ type Config struct {
 	RabbitPort     string `env:"RABBITMQ_PORT" envDefault:"5672"`
 
 	// API & Application
-	APIPort          string `env:"API_PORT" envDefault:"8080"`
-	LogLevel         string `env:"LOG_LEVEL" envDefault:"info"`
-	Environment      string `env:"ENVIRONMENT" envDefault:"development"`
-	ServiceName      string `env:"SERVICE_NAME" envDefault:"logistics-api"`
-	ServiceVersion   string `env:"SERVICE_VERSION" envDefault:"1.0.0"`
-	PSPWebhookSecret      string  `env:"PSP_WEBHOOK_SECRET,required"`                                 // ADR-014
-	JWTSecret             string  `env:"JWT_SECRET,required"`                                         // ADR-008 & ADR-018 (min 32 bytes)
-	PINHMACSecret         string  `env:"PIN_HMAC_SECRET,required"`                                    // Fase 5: HMAC-SHA-256 para PIN (min 32 bytes)
-	PreviousPINHMACSecret string  `env:"PREVIOUS_PIN_HMAC_SECRET"`                                    // Fase 5: Rotação dual-key sem downtime
- 
+	APIPort               string `env:"API_PORT" envDefault:"8080"`
+	LogLevel              string `env:"LOG_LEVEL" envDefault:"info"`
+	Environment           string `env:"ENVIRONMENT" envDefault:"development"`
+	ServiceName           string `env:"SERVICE_NAME" envDefault:"logistics-api"`
+	ServiceVersion        string `env:"SERVICE_VERSION" envDefault:"1.0.0"`
+	PSPWebhookSecret      string `env:"PSP_WEBHOOK_SECRET,required"` // ADR-014
+	JWTSecret             string `env:"JWT_SECRET,required"`         // ADR-008 & ADR-018 (min 32 bytes)
+	PINHMACSecret         string `env:"PIN_HMAC_SECRET,required"`    // Fase 5: HMAC-SHA-256 para PIN (min 32 bytes)
+	PreviousPINHMACSecret string `env:"PREVIOUS_PIN_HMAC_SECRET"`    // Fase 5: Rotação dual-key sem downtime
+
 	// OTel
 	OTelEndpoint      string  `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"localhost:4317"`
 	OTelSamplingRatio float64 `env:"OTEL_SAMPLING_RATIO" envDefault:"1.0"`

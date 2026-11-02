@@ -22,13 +22,13 @@ func (s *PostgresStreamStore) CapturePosition(ctx context.Context) (StreamPositi
 	// to commit, but for our Postgres BIGSERIAL outbox, taking MAX is a simple functional approximation.
 	// We coalesce to 0 if the table is empty.
 	query := `SELECT COALESCE(MAX(stream_position), 0) FROM outbox_events`
-	
+
 	var pos int64
 	err := s.pool.QueryRow(ctx, query).Scan(&pos)
 	if err != nil {
 		return 0, fmt.Errorf("capture position: %w", err)
 	}
-	
+
 	return StreamPosition(pos), nil
 }
 
@@ -44,26 +44,26 @@ func (s *PostgresStreamStore) queryEvents(ctx context.Context, query string, arg
 		var pos int64
 		var eventType string
 		var payloadBytes []byte
-		
+
 		if err := rows.Scan(&pos, &eventType, &payloadBytes); err != nil {
 			return nil, fmt.Errorf("scan stream event: %w", err)
 		}
-		
+
 		domainEvent, err := DeserializeEvent(eventType, payloadBytes)
 		if err != nil {
 			return nil, fmt.Errorf("deserialize event %s at pos %d: %w", eventType, pos, err)
 		}
-		
+
 		results = append(results, StreamEvent{
 			Position:    StreamPosition(pos),
 			DomainEvent: domainEvent,
 		})
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
-	
+
 	return results, nil
 }
 
@@ -97,12 +97,12 @@ func (s *PostgresStreamStore) LoadEvents(ctx context.Context, aggregateID string
 		WHERE aggregate_id = $1 AND sequence > $2
 		ORDER BY sequence ASC
 	`
-	
+
 	streamEvents, err := s.queryEvents(ctx, query, aggregateID, afterSequence)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var domainEvents []DomainEvent
 	for _, se := range streamEvents {
 		domainEvents = append(domainEvents, se.DomainEvent)

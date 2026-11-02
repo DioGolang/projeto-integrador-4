@@ -34,10 +34,11 @@ func NewProjection(db *sql.DB, name string) *Projection {
 //
 // Invariants enforced atomically within a single PostgreSQL transaction:
 // 1. Identity acquisition via processed_events:
-//    - Unprecedented event: acquired atomically; proceeds to read model and checkpoint.
-//    - Exact duplicate (identical event_id and payload_hash): skipped; returns (applied=false, nil).
-//    - Identity conflict (same event_id, different payload_hash): rolls back; returns (applied=false, ErrIdentityConflict).
-//    - Causal conflict (different event_id for same aggregate+sequence): rolls back; returns (applied=false, ErrCausalConflict).
+//   - Unprecedented event: acquired atomically; proceeds to read model and checkpoint.
+//   - Exact duplicate (identical event_id and payload_hash): skipped; returns (applied=false, nil).
+//   - Identity conflict (same event_id, different payload_hash): rolls back; returns (applied=false, ErrIdentityConflict).
+//   - Causal conflict (different event_id for same aggregate+sequence): rolls back; returns (applied=false, ErrCausalConflict).
+//
 // 2. Read model update: Only modified when the event is unprecedented and causal sequence advances monotonically.
 // 3. Checkpoint update: Advanced only on legitimate, committed application.
 // 4. Returns applied=true ONLY if the transaction committed and read model was updated.

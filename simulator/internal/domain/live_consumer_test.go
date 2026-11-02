@@ -8,14 +8,14 @@ import (
 func setupLiveConsumerTest() (*MemoryEventStore, *LiveConsumer) {
 	store := NewMemoryEventStore()
 	recoverer := NewGapRecoverer(store)
-	
-	delivery := NewDelivery("D1", "DriverX", Coordinate{1,1}, Coordinate{2,2})
+
+	delivery := NewDelivery("D1", "DriverX", Coordinate{1, 1}, Coordinate{2, 2})
 	delivery.Apply(EventDriverArrivedAtPickup{ID: "ev-1", DeliveryID: "D1", Seq: 1})
 	// Now state is AT_PICKUP, sequence is 1.
-	
+
 	validator := NewSequenceValidator(1)
 	consumer := NewLiveConsumer(delivery, validator, recoverer)
-	
+
 	return store, consumer
 }
 
@@ -46,7 +46,7 @@ func TestLiveConsumer_Test2_RecoverableGap(t *testing.T) {
 		EventDriverEnRouteToDropoff{ID: "ev-2", DeliveryID: "D1", Seq: 2},
 		EventDeliveryCompleted{ID: "ev-3", DeliveryID: "D1", Seq: 3},
 	}
-	
+
 	liveEvent := EventDeliveryCompleted{ID: "ev-3", DeliveryID: "D1", Seq: 3}
 	err := consumer.Consume(ctx, liveEvent)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestLiveConsumer_Test3_Duplicate(t *testing.T) {
 	// Now cursor = 2
 
 	liveEvent := EventDriverEnRouteToDropoff{ID: "ev-2", DeliveryID: "D1", Seq: 2}
-	
+
 	err := consumer.Consume(ctx, liveEvent)
 	if err != nil {
 		t.Fatalf("unexpected error for duplicate: %v", err)
@@ -98,7 +98,7 @@ func TestLiveConsumer_Test4_Stale(t *testing.T) {
 	// Now cursor = 3
 
 	liveEvent := EventDriverArrivedAtPickup{ID: "ev-1", DeliveryID: "D1", Seq: 1} // Stale!
-	
+
 	err := consumer.Consume(ctx, liveEvent)
 	if err != nil {
 		t.Fatalf("unexpected error for stale: %v", err)
@@ -119,10 +119,10 @@ func TestLiveConsumer_Test5_IncompleteRecovery(t *testing.T) {
 		EventDriverEnRouteToDropoff{ID: "ev-2", DeliveryID: "D1", Seq: 2},
 		// Missing 3!
 	}
-	
+
 	liveEvent := EventDeliveryCompleted{ID: "ev-3", DeliveryID: "D1", Seq: 3}
 	err := consumer.Consume(ctx, liveEvent)
-	
+
 	if err == nil {
 		t.Fatalf("expected error due to incomplete recovery")
 	}
@@ -146,10 +146,10 @@ func TestLiveConsumer_Test6_CorruptedHistory(t *testing.T) {
 	store.events["D1"] = []DomainEvent{
 		EventDeliveryCompleted{ID: "ev-3", DeliveryID: "D1", Seq: 3}, // Corrupted gap
 	}
-	
+
 	liveEvent := EventDeliveryCompleted{ID: "ev-3", DeliveryID: "D1", Seq: 3}
 	err := consumer.Consume(ctx, liveEvent)
-	
+
 	if err == nil {
 		t.Fatalf("expected error due to corrupted history")
 	}

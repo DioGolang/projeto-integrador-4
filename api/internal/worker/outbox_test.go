@@ -385,7 +385,7 @@ func (m *mockFaultInjectingChannel) PublishWithDeferredConfirmWithContext(ctx co
 }
 
 func (m *mockFaultInjectingChannel) NotifyReturn(c chan amqp.Return) chan amqp.Return { return c }
-func (m *mockFaultInjectingChannel) NotifyClose(c chan *amqp.Error) chan *amqp.Error   { return c }
+func (m *mockFaultInjectingChannel) NotifyClose(c chan *amqp.Error) chan *amqp.Error  { return c }
 
 func TestOutbox_AmbiguousPublisherConfirmRecoveryAndDeduplication(t *testing.T) {
 	dsn := os.Getenv("TEST_DB_DSN")
@@ -627,4 +627,3 @@ func TestOutboxWorker_ConfigurationAndGracefulShutdown(t *testing.T) {
 		t.Fatal("worker did not shut down gracefully within timeout")
 	}
 }
-

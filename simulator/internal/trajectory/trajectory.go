@@ -40,12 +40,12 @@ func (t *Trajectory) PositionAt(elapsed time.Duration) domain.Coordinate {
 	if len(t.route.Points) == 1 {
 		return t.route.Points[0]
 	}
-	
+
 	// Before start
 	if elapsed <= 0 {
 		return t.route.Points[0]
 	}
-	
+
 	// After end
 	if elapsed >= t.route.Duration {
 		return t.route.Points[len(t.route.Points)-1]
@@ -59,13 +59,13 @@ func (t *Trajectory) PositionAt(elapsed time.Duration) domain.Coordinate {
 	for i := 0; i < len(t.accDistance)-1; i++ {
 		startDist := t.accDistance[i]
 		endDist := t.accDistance[i+1]
-		
+
 		if targetDistance >= startDist && targetDistance <= endDist {
 			segmentDist := endDist - startDist
 			if segmentDist == 0 {
 				return t.route.Points[i+1]
 			}
-			
+
 			localProgress := (targetDistance - startDist) / segmentDist
 			return interpolate(t.route.Points[i], t.route.Points[i+1], localProgress)
 		}

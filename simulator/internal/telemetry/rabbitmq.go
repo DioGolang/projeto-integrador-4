@@ -3,11 +3,11 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
-	"time"
 	"fmt"
+	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/dvasconcellos/elo/simulator/internal/domain"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type TelemetryEnvelope struct {

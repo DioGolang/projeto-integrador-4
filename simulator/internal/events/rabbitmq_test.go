@@ -61,12 +61,12 @@ func setupTestRabbit(t *testing.T) (*amqp.Connection, *amqp.Channel, string) {
 	if err != nil {
 		t.Skipf("RabbitMQ not available: %v", err)
 	}
-	
+
 	ch, err := conn.Channel()
 	if err != nil {
 		t.Fatalf("failed to open channel: %v", err)
 	}
-	
+
 	exchangeName := "test_events_exchange"
 	err = ch.ExchangeDeclare(
 		exchangeName,
@@ -104,7 +104,7 @@ func TestRabbitMQ_AtLeastOncePublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Purge queue to ensure clean state
 	ch.QueuePurge(q.Name, false)
 
@@ -112,28 +112,28 @@ func TestRabbitMQ_AtLeastOncePublication(t *testing.T) {
 	memDB := &MemRepository{
 		events: []outbox.OutboxEvent{
 			{
-				ID: "ev-crash",
-				AggregateType: "delivery",
-				AggregateID: "D1",
-				Sequence: 1,
+				ID:             "ev-crash",
+				AggregateType:  "delivery",
+				AggregateID:    "D1",
+				Sequence:       1,
 				StreamPosition: 100,
-				EventType: "DeliveryCompleted",
-				Payload: []byte("{}"),
+				EventType:      "DeliveryCompleted",
+				Payload:        []byte("{}"),
 			},
 		},
 	}
-	
+
 	crashDB := &CrashableRepository{
-		Repository: memDB,
+		Repository:  memDB,
 		CrashOnMark: "ev-crash",
 	}
 
 	publisher := NewRabbitMQPublisher(ch, exchange)
-	
+
 	// Simple retry policy mock
 	policy := &outbox.FixedPolicy{Delay: 0}
 	failurePolicy := &outbox.NeverGiveUpPolicy{}
-	
+
 	relay := outbox.NewRelay(crashDB, publisher, policy, failurePolicy)
 
 	// 3. RUN 1: The Crash Window
@@ -158,7 +158,7 @@ func TestRabbitMQ_AtLeastOncePublication(t *testing.T) {
 	}
 
 	receivedCount := 0
-	
+
 	// Drain messages
 	for i := 0; i < 2; i++ {
 		select {
