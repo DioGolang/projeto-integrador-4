@@ -215,17 +215,37 @@ docker-compose up -d --build
 
 ---
 
-## 🧪 Comandos Úteis (Makefile & Scripts)
+## 🧪 Comandos Úteis (Makefile & DX)
 
-| Comando | Descrição |
-|---|---|
-| `make up` | Sobe todos os containers da infraestrutura via Docker Compose |
-| `make down` | Encerra os containers e redes locais |
-| `make logs` | Visualiza logs unificados dos containers |
-| `make migrate-up` | Executa todas as migrações SQL pendentes (`migrations/`) |
-| `make migrate-down` | Reverte a última migração aplicada |
-| `make proto-gen` | Gera o código Go e TypeScript via Buf CLI (`proto/`) |
-| `make lint` | Executa `golangci-lint` na API e `eslint` no frontend Web |
+O `Makefile` carrega automaticamente as variáveis do arquivo `.env` (com fallbacks seguros em constantes), evitando que desenvolvedores precisem digitar credenciais ou parâmetros de conexão manualmente a cada comando.
+
+Para inspecionar as variáveis e constantes ativas:
+```bash
+make env-info
+```
+
+### Principais Alvos Disponíveis
+
+| Alvo | Categoria | Descrição |
+|---|---|---|
+| `make help` | Ajuda | Exibe o catálogo completo de comandos organizados por categoria |
+| `make env-info` | Ajuda | Exibe as variáveis de ambiente ativas e constantes de conexão calculadas |
+| `make up` / `make down` | Infra | Sobe ou encerra os contêineres de infraestrutura via Docker Compose |
+| `make logs` | Infra | Acompanha os logs unificados (`logs-api`, `logs-simulator`, `logs-db`, `logs-rabbitmq`) |
+| `make db-shell` | Infra | Abre sessão interativa `psql` conectada ao banco usando as credenciais do `.env` |
+| `make redis-cli` | Infra | Abre console interativo no contêiner do Redis |
+| `make migrate-up` | Banco | Aplica todas as migrações SQL pendentes utilizando a `DB_URL` calculada |
+| `make migrate-down` | Banco | Desfaz a última migração aplicada |
+| `make seed` | Banco | Executa o seeder de dados iniciais (lojistas, entregadores, credenciais) |
+| `make run-api` | Execução | Inicializa o servidor Go da API localmente (`:8080`) |
+| `make run-simulator` | Execução | Inicializa o simulador autônomo de corridas localmente |
+| `make run-web` | Execução | Inicializa o frontend Next.js em modo desenvolvimento (`:3001`) |
+| `make test` | Testes | Executa toda a suíte de testes do workspace (`test-unit`, `test-api`, `test-simulator`) |
+| `make test-coverage` | Testes | Executa testes e exibe relatório de cobertura por função |
+| `make fmt` | Qualidade | Formata todo o código Go via `gofmt` |
+| `make tidy` | Qualidade | Sincroniza e limpa as dependências `go.mod` de todos os módulos |
+| `make lint` | Qualidade | Executa os linters da API (`golangci-lint`) e do portal Web (`eslint`) |
+| `make gen` | Geração | Executa geradores de código (`proto-gen` via Buf e `sqlc-gen` via sqlc) |
 
 ### Testes de Carga e Saturação (k6)
 O diretório `loadtest/` contém scripts para validação de resiliência e saturação sob alto volume:
