@@ -32,20 +32,58 @@ func init() {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 }
 
-type mockAMQPChannel struct {
-	publishedExchange string
-	publishedKey      string
-	publishedMsg      amqp.Publishing
-	publishErr        error
-	publishCallCount  int
+type mockConfirmation struct {
+	nack bool
+	err  error
 }
 
-func (m *mockAMQPChannel) PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+func (m *mockConfirmation) WaitContext(ctx context.Context) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	return !m.nack, nil
+}
+
+func (m *mockConfirmation) Acked() bool {
+	return !m.nack
+}
+
+type mockAMQPChannel struct {
+	publishedExchange  string
+	publishedKey       string
+	publishedMandatory bool
+	publishedImmediate bool
+	publishedMsg       amqp.Publishing
+	publishErr         error
+	publishCallCount   int
+	nack               bool
+	confirmErr         error
+
+	returnChan chan amqp.Return
+	closeChan  chan *amqp.Error
+}
+
+func (m *mockAMQPChannel) PublishWithDeferredConfirmWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) (Confirmation, error) {
 	m.publishCallCount++
 	m.publishedExchange = exchange
 	m.publishedKey = key
+	m.publishedMandatory = mandatory
+	m.publishedImmediate = immediate
 	m.publishedMsg = msg
-	return m.publishErr
+	if m.publishErr != nil {
+		return nil, m.publishErr
+	}
+	return &mockConfirmation{nack: m.nack, err: m.confirmErr}, nil
+}
+
+func (m *mockAMQPChannel) NotifyReturn(c chan amqp.Return) chan amqp.Return {
+	m.returnChan = c
+	return c
+}
+
+func (m *mockAMQPChannel) NotifyClose(c chan *amqp.Error) chan *amqp.Error {
+	m.closeChan = c
+	return c
 }
 
 type mockMetrics struct {
@@ -199,6 +237,132 @@ func TestOutboxWorker_PublishEvent(t *testing.T) {
 			t.Errorf("expected valid span in returned context")
 		}
 	})
+
+	t.Run("enforces_mandatory_flag_true_on_amqp_publishing", func(t *testing.T) {
+		mockCh := &mockAMQPChannel{}
+		w := NewOutboxWorker(nil, nil, nopLogger, mockCh)
+
+		event := db.OutboxEvent{
+			ID:          uuid.New(),
+			AggregateID: uuid.New(),
+			EventType:   "OrderCreated",
+			Payload:     json.RawMessage(`{}`),
+		}
+
+		_, err := w.publishEvent(context.Background(), event)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if !mockCh.publishedMandatory {
+			t.Errorf("expected mandatory=true for reliable publishing, got false")
+		}
+	})
+
+	t.Run("rejects_event_on_broker_nack_and_records_failure_metric", func(t *testing.T) {
+		mockCh := &mockAMQPChannel{nack: true}
+		metricsSpy := &mockMetrics{}
+		w := NewOutboxWorker(nil, nil, nopLogger, mockCh, WithMetrics(metricsSpy))
+
+		event := db.OutboxEvent{
+			ID:          uuid.New(),
+			AggregateID: uuid.New(),
+			EventType:   "OrderCreated",
+			Payload:     json.RawMessage(`{}`),
+		}
+
+		_, err := w.publishEvent(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected error on broker NACK, got nil")
+		}
+		if metricsSpy.outboxFailureCount != 1 {
+			t.Errorf("expected 1 failure metric, got %d", metricsSpy.outboxFailureCount)
+		}
+	})
+
+	t.Run("rejects_event_on_broker_basic_return_and_records_failure_metric", func(t *testing.T) {
+		mockCh := &mockAMQPChannel{}
+		metricsSpy := &mockMetrics{}
+		w := NewOutboxWorker(nil, nil, nopLogger, mockCh, WithMetrics(metricsSpy))
+
+		eventID := uuid.New()
+		event := db.OutboxEvent{
+			ID:          eventID,
+			AggregateID: uuid.New(),
+			EventType:   "OrderCreated",
+			Payload:     json.RawMessage(`{}`),
+		}
+
+		// Simulate broker emitting basic.return (NO_ROUTE) prior to ack
+		mockCh.returnChan <- amqp.Return{
+			ReplyCode:  312,
+			ReplyText:  "NO_ROUTE",
+			Exchange:   "logistics.events",
+			RoutingKey: "OrderCreated",
+			MessageId:  eventID.String(),
+		}
+
+		_, err := w.publishEvent(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected error on unroutable message return, got nil")
+		}
+		if metricsSpy.outboxFailureCount != 1 {
+			t.Errorf("expected 1 failure metric, got %d", metricsSpy.outboxFailureCount)
+		}
+	})
+
+	t.Run("rejects_event_on_confirmation_timeout_and_records_failure_metric", func(t *testing.T) {
+		mockCh := &mockAMQPChannel{confirmErr: context.DeadlineExceeded}
+		metricsSpy := &mockMetrics{}
+		w := NewOutboxWorker(nil, nil, nopLogger, mockCh, WithMetrics(metricsSpy))
+
+		event := db.OutboxEvent{
+			ID:          uuid.New(),
+			AggregateID: uuid.New(),
+			EventType:   "OrderCreated",
+			Payload:     json.RawMessage(`{}`),
+		}
+
+		_, err := w.publishEvent(context.Background(), event)
+		if err == nil {
+			t.Fatal("expected error on timeout, got nil")
+		}
+		if metricsSpy.outboxFailureCount != 1 {
+			t.Errorf("expected 1 failure metric, got %d", metricsSpy.outboxFailureCount)
+		}
+	})
+
+	t.Run("synchronization_barrier_captures_return_before_ack", func(t *testing.T) {
+		mockCh := &mockAMQPChannel{}
+		w := NewOutboxWorker(nil, nil, nopLogger, mockCh)
+
+		eventID := uuid.New()
+		event := db.OutboxEvent{
+			ID:          eventID,
+			AggregateID: uuid.New(),
+			EventType:   "UnroutableEvent",
+			Payload:     json.RawMessage(`{}`),
+		}
+
+		// Pre-populate returnChan simulating AMQP reader goroutine dispatching basic.return
+		// strictly before basic.ack closes DeferredConfirmation.done
+		mockCh.returnChan <- amqp.Return{
+			ReplyCode:  312,
+			ReplyText:  "NO_ROUTE",
+			MessageId:  eventID.String(),
+			RoutingKey: "UnroutableEvent",
+		}
+
+		returnedMap := make(map[string]amqp.Return)
+		_, err := w.publishAndConfirmEvent(context.Background(), event, returnedMap)
+		if err == nil {
+			t.Fatal("expected error from publishAndConfirmEvent for returned message, got nil")
+		}
+
+		if _, exists := returnedMap[eventID.String()]; !exists {
+			t.Fatal("expected eventID to be present in returnedMap after drain barrier")
+		}
+	})
 }
 
 type mockAck struct{}
@@ -211,12 +375,17 @@ type mockFaultInjectingChannel struct {
 	onPublish func(msg amqp.Publishing) error
 }
 
-func (m *mockFaultInjectingChannel) PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+func (m *mockFaultInjectingChannel) PublishWithDeferredConfirmWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) (Confirmation, error) {
 	if m.onPublish != nil {
-		return m.onPublish(msg)
+		if err := m.onPublish(msg); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return &mockConfirmation{nack: false}, nil
 }
+
+func (m *mockFaultInjectingChannel) NotifyReturn(c chan amqp.Return) chan amqp.Return { return c }
+func (m *mockFaultInjectingChannel) NotifyClose(c chan *amqp.Error) chan *amqp.Error   { return c }
 
 func TestOutbox_AmbiguousPublisherConfirmRecoveryAndDeduplication(t *testing.T) {
 	dsn := os.Getenv("TEST_DB_DSN")
@@ -233,9 +402,21 @@ func TestOutbox_AmbiguousPublisherConfirmRecoveryAndDeduplication(t *testing.T) 
 
 	// Initialize test tables cleanly
 	_, err = dbConn.ExecContext(ctx, `
+		DROP TABLE IF EXISTS processed_events CASCADE;
 		DROP TABLE IF EXISTS outbox_events;
 		DROP TABLE IF EXISTS projection_checkpoints;
 		DROP TABLE IF EXISTS delivery_read_model;
+		CREATE TABLE processed_events (
+			consumer_id TEXT NOT NULL,
+			event_id TEXT NOT NULL,
+			processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			aggregate_id UUID NOT NULL,
+			sequence BIGINT NOT NULL,
+			event_type VARCHAR(100) NOT NULL,
+			payload_hash VARCHAR(64) NOT NULL,
+			PRIMARY KEY (consumer_id, event_id),
+			CONSTRAINT uq_processed_events_consumer_agg_seq UNIQUE (consumer_id, aggregate_id, sequence)
+		);
 		CREATE TABLE delivery_read_model (
 			delivery_id UUID PRIMARY KEY,
 			driver_id TEXT NOT NULL,
