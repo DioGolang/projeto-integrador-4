@@ -5,255 +5,250 @@
 # Motor Logístico: Despacho Assíncrono para o Comércio Local
 
 ![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go)
-![Next.js](https://img.shields.io/badge/Next.js-14+-000000?style=for-the-badge&logo=next.js)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791?style=for-the-badge&logo=postgresql)
+![Next.js](https://img.shields.io/badge/Next.js-16+-000000?style=for-the-badge&logo=next.js)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18_(PostGIS)-336791?style=for-the-badge&logo=postgresql)
 ![Redis](https://img.shields.io/badge/Redis-8-DC382D?style=for-the-badge&logo=redis)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.3.5-FF6600?style=for-the-badge&logo=rabbitmq)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.3.5_(Management)-FF6600?style=for-the-badge&logo=rabbitmq)
 ![Protobuf](https://img.shields.io/badge/Protobuf-Connect_RPC-blue?style=for-the-badge)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Tracing_%26_Metrics-F5A800?style=for-the-badge&logo=opentelemetry)
+![Grafana](https://img.shields.io/badge/Grafana-13.2.1-F46800?style=for-the-badge&logo=grafana)
 
 ## Visão Geral
-Plataforma inteligente de gestão logística e despacho assíncrono projetada para pequenos comércios de bairro. 
+Plataforma inteligente de gestão logística, despacho assíncrono e rastreamento em tempo real projetada para conectar diretamente pequenos comércios de bairro a entregadores parceiros da região.
 
-O objetivo do sistema é reduzir as taxas abusivas cobradas por grandes aplicativos, conectando diretamente os lojistas locais aos entregadores da região através de um **Motor de Despacho (Fan-out) de alta performance**. O sistema garante resiliência sob pico de carga, resolução de concorrência atômica no aceite de pedidos e roteamento geospacial.
-
-## Arquitetura e Stack
-O projeto adota o padrão **Monolito Modular Idiomático em Go**, facilitando a extração para microsserviços no futuro. A comunicação com o frontend (Next.js) é feita através de contratos estritos via **Protocol Buffers (Protobuf)** utilizando o framework **Connect RPC**, garantindo máxima tipagem e performance sem necessidade de proxies.
-
-**Consulte a Documentação de Arquitetura:**
-- [Desenho da Arquitetura (C4 Model) e Bounded Contexts](docs/architecture.md)
-- [Contratos de API (Protobuf)](docs/api-contracts.md)
-- [Esquema de Banco de Dados e Dicionário de Dados](docs/database-schema.md)
-- [Arquitetura de Decisões (ADRs)](docs/adrs/)
-- [Padrões de Código e Linting](docs/linting.md)
-- [Estratégia de QA e Testes](docs/testing.md)
+O sistema elimina taxas abusivas de marketplaces centralizados, viabilizando um **Motor de Despacho (Fan-out) de alta performance e resiliência bancária (Zero Trust)**. A plataforma garante resolução atômica de concorrência, consistência eventual estrita via Transactional Outbox com Publisher Confirms, roteamento físico geodésico (OSRM), tolerância a partições com Gap Recovery e observabilidade de ponta a ponta.
 
 ---
 
-### 1. Visão Geral do Sistema (C4 Container Level)
+## 🏛️ Arquitetura e Estrutura do Monorepo
 
-Este diagrama ilustra como os módulos internos interagem com a infraestrutura, demonstrando a extração do conceito de microsserviços dentro do Monolito Modular.
+O projeto adota uma arquitetura em **Monorepo** com separação clara de responsabilidades entre backend, frontend, simulador autônomo, suíte de testes de carga e infraestrutura:
 
-```mermaid
-graph TD
-    Merchant[Lojista] -->|Connect RPC / CreateOrder| API[🚢 API Service]
-
-subgraph Infrastructure ["Infrastructure"]
-    DB[(PostgreSQL)]
-    MQ[RabbitMQ]
-    Redis[(Redis Geo)]
-end
-
-subgraph Monolith ["Modular Monolith (Go)"]
-    API -->|1. Persiste Pedido| DB
-    API -->|2. Publica Evento| MQ
-
-Worker[👷 Dispatch Worker] -->|3. Consome| MQ
-Worker -->|4. Check Idempotência| DB
-Worker -->|7. Atualiza Status| DB
-
-Fleet[📍 Fleet Module] -->|6. GeoSearch| Redis
-end
-
-Worker -->|5. Consulta Raio| Fleet
+```text
+├── api/          # Backend Go (Connect RPC, Domain Services, Transactional Outbox, OTel, LiveHub)
+├── web/          # Frontend Next.js 16 / React 19 (Dashboard do Lojista, Mapa MapLibre GL, Auth)
+├── simulator/    # Motor autônomo em Go para simulação de entregadores e replay de rotas OSRM
+├── loadtest/     # Suíte de testes de carga k6 e monitoramento de saturação com Circuit Breaker
+├── proto/        # Definições contratuais gRPC / Connect RPC via Protocol Buffers
+├── migrations/   # Migrações versionadas do PostgreSQL/PostGIS (000001 a 000008)
+├── infra/        # Configurações de observabilidade e mensageria (Prometheus, OTel, Tempo, Loki, Grafana, RabbitMQ)
+└── docs/         # Decisões de Arquitetura (ADRs 001 a 019), C4 Model, Contratos e Runbooks
 ```
 
-### 2. Fluxo de Dados (Sequence Diagram)
+### Documentação Técnica e Arquitetural
+- [Desenho da Arquitetura (C4 Model) e Bounded Contexts](docs/architecture.md)
+- [Contratos de API (Protobuf & Connect RPC)](docs/api-contracts.md)
+- [Esquema de Banco de Dados e Dicionário de Dados](docs/database-schema.md)
+- [Arquitetura de Decisões (ADRs 001 a 019)](docs/adrs/)
+  - [ADR-002: Transactional Outbox Pattern](docs/adrs/002-transactional-outbox.md)
+  - [ADR-013: Observabilidade OTel, Tempo e Prometheus](docs/adrs/013-observabilidade-otel.md)
+  - [ADR-018: Autenticação Zero Trust, JWT e Gestão de Sessões](docs/adrs/018-autenticacao-gestao-sessoes.md)
+  - [ADR-019: Topologia RabbitMQ Declarativa e Pacing da Telemetria](docs/adrs/019-topologia-rabbitmq-declarativa-e-pacing-telemetria.md)
+- [Regras de Negócio e Ciclo de Vida do Pedido](docs/business-rules.md)
+- [Estratégia de QA, Concorrência e Testes](docs/testing.md)
+- [Runbooks Operacionais (DLQ, Redis, Rollback)](docs/runbooks/)
 
-O fluxo "Happy Path" de um pedido, demonstrando a natureza assíncrona, a resiliência e a consistência eventual do sistema via Outbox.
+---
+
+## 🔄 Fluxo de Dados e Ciclo de Vida dos Eventos
+
+O ciclo de vida dos pedidos e da telemetria segue uma rigorosa separação em 4 estágios determinísticos:
 
 ```mermaid
 sequenceDiagram
-    participant Merchant
-    participant API
-    participant DB
-    participant RabbitMQ
-    participant Worker
-    participant Fleet
-    participant Redis
+    autonumber
+    participant Merchant as Lojista / Cliente
+    participant API as 🚢 API Service (Go)
+    participant DB as 🐘 PostgreSQL 18
+    participant Relay as ⚙️ Outbox Relay
+    participant RMQ as 🐇 RabbitMQ Broker
+    participant Consumer as 📥 Projection Consumer
+    participant Hub as ⚡ LiveHub (SSE/Stream)
+    participant Web as 🖥️ Web Tracker (Next.js)
 
-    Merchant->>API: Connect RPC (CreateOrder)
+    Merchant->>API: Connect RPC: CreateOrder (HMAC PIN)
     activate API
-    API->>DB: Transaction: INSERT Order (CREATED) + INSERT Outbox
-    API-->>Merchant: Order ID
+    API->>DB: TX: INSERT order + INSERT outbox_events (PENDING)
+    API-->>Merchant: Order ID + PIN de Entrega
     deactivate API
 
-    Note over API,RabbitMQ: Outbox Relay (Background Process)
-    API->>DB: Fetch Pending (SKIP LOCKED)
-    API->>RabbitMQ: Publish (OrderPlaced)
-    API->>DB: Mark as Published
-
-    Note over RabbitMQ,Worker: Processamento Assíncrono (Fan-out)
-
-    RabbitMQ->>Worker: Consume Message
-    activate Worker
-    Worker->>Worker: Extract Tracing Context
-    Worker->>DB: Check Idempotency (ProcessedEvents)
-
-    alt Nova Mensagem (Lock Adquirido)
-        Worker->>Fleet: FindNearbyDeliverers(lat, lng)
-        activate Fleet
-        Fleet->>Redis: GEOSEARCH (Radius 5km)
-        Redis-->>Fleet: Lista de Entregadores
-        Fleet-->>Worker: IDs
-        deactivate Fleet
-
-        Worker->>DB: UPDATE Order (DISPATCHED)
-        Worker-->>RabbitMQ: Publish Fan-Out / Push
-        Worker-->>RabbitMQ: ACK
-    else Mensagem Duplicada
-        Worker-->>RabbitMQ: ACK (Descarte Silencioso)
+    loop Polling com SKIP LOCKED
+        Relay->>DB: SELECT PENDING outbox_events FOR UPDATE SKIP LOCKED
+        Relay->>RMQ: PublishWithDeferredConfirm (logistics.events)
+        RMQ-->>Relay: Publisher Confirm (ACK)
+        Relay->>DB: UPDATE outbox_events SET status = 'PROCESSED'
     end
-    deactivate Worker
+
+    RMQ->>Consumer: Delivery (QoS=1, api.delivery_projection)
+    activate Consumer
+    Consumer->>Consumer: Valida Sequence Causal & Deduplica
+    Consumer->>DB: TX: INSERT processed_events + UPDATE delivery_read_model + UPDATE checkpoint
+    DB-->>Consumer: Commit OK
+    Consumer->>RMQ: Basic.Ack
+    Consumer->>Hub: Publish(Event)
+    Hub-->>Web: StreamOrderStatus (Server-Streaming RPC)
+    deactivate Consumer
 ```
 
 ---
 
-## 🧩 Modelagem e Dados
-
-Além da infraestrutura de ponta, o motor utiliza modelagem rica para garantir a integridade das regras de negócio e a consistência dos dados distribuídos.
+## 🧩 Modelagem de Dados e Regras de Negócio
 
 ### Ciclo de Vida do Pedido (State Machine)
-
-O domínio garante transições válidas via **State Pattern**, enquanto o banco de dados atua como última linha de defesa através de restrições lógicas, evitando estados inválidos mesmo em cenários de falha de concorrência.
+As transições de estado são blindadas no nível de domínio e com constraints no banco relacional:
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> CREATED
+    [*] --> CREATED: CreateOrder()
+    CREATED --> DISPATCHED: Dispatch()
+    CREATED --> CANCELLED: Cancel()
     
-    state CREATED {
-        [*] --> AguardandoDespacho
-    }
+    DISPATCHED --> ACCEPTED: AcceptDelivery(deliverer_id)
+    DISPATCHED --> CANCELLED: Cancel()
 
-    CREATED --> DISPATCHED : Dispatch()
-    CREATED --> CANCELLED : Cancel()
+    ACCEPTED --> IN_TRANSIT: PickUp()
+    IN_TRANSIT --> DELIVERED: CompleteDelivery(PIN + Geofence)
+    IN_TRANSIT --> FROZEN: Geofence Breach / Max PIN Attempts
+    FROZEN --> ACCEPTED: UnfreezeDelivery(ADMIN)
     
-    state DISPATCHED {
-       [*] --> OfertaEnviada
-    }
-
-    DISPATCHED --> ACCEPTED : Accept(deliverer_id)
-    DISPATCHED --> CANCELLED : Cancel()
-
-    ACCEPTED --> IN_TRANSIT : PickUp()
-    IN_TRANSIT --> COMPLETED : Deliver()
-    
-    COMPLETED --> [*]
+    DELIVERED --> [*]
     CANCELLED --> [*]
 ```
 
-### Consistência Eventual (Transactional Outbox)
+### Regras Físicas e Segurança (Zero Trust)
+1. **Conclusão de Entrega Segura (RF05/RNF09):** O encerramento da corrida exige conferência do **PIN de 4 dígitos** (hasheado via HMAC-SHA256 dual-key) e validação geodésica (**Geofencing** de até 50m do endereço de entrega, com zona de tolerância e auditoria até 300m).
+2. **Idempotência Estrita por Impressão Digital (ADR-019):** Eventos de telemetria e projeção geram hash SHA-256 canônico resistente a jitter sub-5cm. Mensagens idênticas recebem ACK sem duplicar escritas; divergências de payload ou concorrência causal disparam rejeição para Dead Letter Queue (`logistics.events.dlx`).
+3. **Outbox Relay com Publisher Confirms Diferidos:** O relay do outbox aguarda confirmação explícita do broker antes de marcar eventos como `PROCESSED`, prevenindo perda de dados em quedas abruptas de conexão AMQP.
 
-Para resolver o problema de escrita dual (*Dual Write*) em sistemas distribuídos, não publicamos mensagens diretamente na fila durante o Request HTTP. Em vez disso, persistimos o evento na mesma transação atômica do banco de dados relacional.
+---
 
-```mermaid
-erDiagram
-    ORDERS ||--o{ OUTBOX_EVENTS : "Atomic Write"
-    
-    ORDERS {
-        uuid id PK
-        uuid merchant_id
-        decimal total_value
-        varchar status
-        uuid deliverer_id
-    }
+## 📊 Observabilidade e Telemetria
 
-    OUTBOX_EVENTS {
-        uuid id PK
-        uuid aggregate_id FK "Refers to Order.ID"
-        varchar aggregate_type
-        varchar event_type
-        jsonb payload
-        varchar status "PENDING | PUBLISHED"
-    }
+A infraestrutura conta com observabilidade unificada através do **OpenTelemetry Collector Contrib**:
+
+- **Métricas:** Prometheus (`:9090`) coletando dados da API (`:8080/metrics`), do RabbitMQ Management (`:15692`) e do pool do PostgreSQL.
+- **Traces Distribuídos:** Grafana Tempo (`:3200`) recebendo spans gRPC/HTTP OTLP (`:4317`) propagados via W3C Trace Context (`traceparent`).
+- **Logs Estruturados:** Grafana Loki (`:3100`) correlacionado a traces via `trace_id`.
+- **Dashboards Prontos no Grafana:**
+  - `App Overview`: RPS, latências de endpoints Connect RPC, taxa de erros HTTP/gRPC.
+  - `PostgreSQL Pool`: Conexões abertas, esperas de locks, uso de transações.
+  - `RabbitMQ Events & Outbox`: Taxas de publish, filas ativas, tempos de confirmação e volume de DLQ.
+  - `Logs & Traces`: Navegação cruzada Trace-to-Logs e Trace-to-Metrics.
+
+---
+
+## 🛠️ Stack Tecnológica
+
+| Componente | Tecnologia | Versão | Função Principal |
+|---|---|---|---|
+| **Backend API** | Go | `1.22+` | Monolito Modular, RPCs Connect, Interceptores, Worker Outbox |
+| **Frontend** | Next.js / React | `16 / 19` | Portal do Lojista, Mapa MapLibre GL, Streaming em Tempo Real |
+| **Simulador** | Go / OSRM | `1.22+` | Replay de rotas físicas de motocicletas, pacing e telemetria |
+| **Banco de Dados** | PostgreSQL + PostGIS | `18` | Persistência transacional, Read Model e cálculos espaciais |
+| **Cache & Geo** | Redis | `8 Alpine` | Cache rápido e estruturas espaciais para busca de entregadores |
+| **Broker de Eventos** | RabbitMQ | `4.3.5` | Mensageria, Quorum Queues, Dead Letter Exchanges |
+| **Coletor OTel** | OTel Collector Contrib | `0.100.0` | Ingestão e pipeline de traces, métricas e logs |
+| **Rastreamento** | Grafana Tempo | `2.4.0` | Armazenamento de traces distribuídos |
+| **Logs** | Grafana Loki | `3.7.7` | Ingestão de logs centralizados |
+| **Métricas** | Prometheus | `v3.13.2` | Coleta de métricas e alertas automáticos |
+| **Visualização** | Grafana | `13.2.1` | Painéis e auditoria operacional unificada |
+
+---
+
+## 🚀 Como Executar o Projeto
+
+### Pré-requisitos
+- [Docker](https://docs.docker.com/get-docker/) e [Docker Compose](https://docs.docker.com/compose/)
+- [Go 1.22+](https://go.dev/dl/)
+- [Node.js 20+](https://nodejs.org/) e npm
+- [Buf CLI](https://buf.build/docs/installation)
+- [golang-migrate](https://github.com/golang-migrate/migrate)
+
+### 1. Configurar Variáveis de Ambiente
+Copie o arquivo de exemplo e configure suas chaves de segurança:
+```bash
+cp .env.example .env
+```
+> **Nota de Segurança:** As variáveis `JWT_SECRET`, `PIN_HMAC_SECRET` e `GRAFANA_ADMIN_PASSWORD` devem ser strings seguras com comprimento mínimo de 32 bytes (256 bits).
+
+### 2. Inicializar a Infraestrutura
+Inicie todos os containers de infraestrutura em segundo plano:
+```bash
+make up
 ```
 
----
+### 3. Aplicar as Migrações do Banco
+Aplique as 8 migrações estruturais do PostgreSQL:
+```bash
+make migrate-up
+```
 
-## 🧠 Padrões de Código (Staff Engineer View)
+### 4. Executar os Serviços Localmente
 
-Decisões técnicas de alto nível implementadas no código para garantir manutenibilidade, resiliência e escala:
+#### Opção A: Executar via Docker Compose Completo
+O `docker-compose.yml` inclui a API e o Simulador conteinerizados. Para subir tudo de uma vez:
+```bash
+docker-compose up -d --build
+```
 
-### 1. Idempotency Decorator (Middleware)
-- **Local:** `pkg/event/middleware.go`
-- **Conceito:** Separação total entre a infraestrutura de controle (Postgres/Redis) e a regra de negócio. O Handler consumidor não sabe que está sendo deduplicado. Isso facilita testes unitários (bastando mockar a interface `IdempotencyStore`) e mantém o princípio de Responsabilidade Única (SRP) intacto.
+#### Opção B: Desenvolvimento Local (Hot Reload / Debug)
+- **Executar a API (Go):**
+  ```bash
+  cd api
+  go run cmd/server/main.go
+  ```
+- **Executar o Frontend (Next.js):**
+  ```bash
+  cd web
+  npm install
+  npm run dev
+  ```
+  O portal web estará acessível em `http://localhost:3001` e a API em `http://localhost:8080`.
 
-### 2. Database Locking Strategy (Outbox)
-- **Local:** `internal/infra/database/queries/outbox.sql`
-- **Conceito:** Uso de `FOR UPDATE SKIP LOCKED` no PostgreSQL.
-- **Por quê?** Permite escalar o Outbox Relay horizontalmente (subindo múltiplas instâncias da API) sem gerar *Race Conditions*. Cada instância do relay puxa um lote exclusivo de eventos para enviar ao broker.
-
-### 3. Worker Pool & Graceful Shutdown
-- **Local:** `internal/infra/event/consumer.go`
-- **Conceito:** Uso extensivo de `sync.WaitGroup` e canais (`channels`) de sinalização do OS. Quando o Kubernetes ou o Docker envia um `SIGTERM`, o serviço para imediatamente de puxar novas mensagens do RabbitMQ, mas aguarda os workers ativos terminarem seu processamento em voo antes de desligar a aplicação, evitando perda de eventos na memória.
-
-### 4. Propagação de Contexto (Tracing)
-- **Local:** `internal/infra/event/consumer.go`
-- **Conceito:** Extração manual do header `traceparent` do AMQP (RabbitMQ) e injeção no `context.Context` nativo do Go. Isso garante que o *Trace ID* gerado na requisição inicial HTTP (criada pelo lojista) flua por toda a cadeia, aparecendo nos logs do Worker e nas queries ao banco.
-
-### 5. Retry Strategy (Full Jitter)
-- **Local:** `internal/infra/event/retry_wrapper.go`
-- **Conceito:** Implementação do padrão *Full Jitter* utilizando a nova API `math/rand/v2` do Go.
-- **Por quê?** Evita o *Thundering Herd* (efeito manada). Se uma API de terceiros ou o banco oscilar e cair, o Jitter impede que milhares de workers tentem se reconectar exatamente no mesmo milissegundo, espalhando as retentativas de forma pseudoaleatória para proteger o sistema.
-
-### 6. Rate Limiting Strategy (In-Memory vs Distributed)
-- **Local:** `internal/infra/web/middleware/rate_limit.go`
-- **Conceito:** Utilização de *Token Bucket* (`golang.org/x/time/rate`) em combinação com o *Visitor Pattern* e uma *Cleanup Routine* em background para limpeza de memória.
-- **Por quê?** Optamos por Rate Limit Local (em memória) ao invés de Distribuído (Redis) para a camada de proteção.
-  - **Latência Zero:** Não adiciona um *network hop* no hot path da API.
-  - **Isolamento de Falha:** Se o Redis cair, a API continua operando normalmente e cada instância continua se auto-protegendo de ataques de DDoS volumétricos.
-
-### 7. Health Check Strategy (Dependency Injection)
-- **Local:** `internal/infra/web/handler/health.go`
-- **Conceito:** Uso do padrão *Functional Options* combinado com *Closures* (`func(ctx) error`) para injetar as verificações no Health Handler.
-- **Por quê?**
-  - **Desacoplamento:** O handler HTTP fica cego sobre a existência de `pgx`, `go-redis` ou RabbitMQ, o que simplifica brutalmente os testes.
-  - **Performance e Proteção:** A verificação reaproveita as *connection pools* ativas da aplicação (ex: `db.PingContext()`, `amqp.IsClosed()`) ao invés de tentar abrir uma nova conexão TCP a cada chamada de health. Isso impede *Connection Storms* se a infraestrutura estiver sofrendo engasgos temporários.
+- **Executar o Simulador de Entregas (Go):**
+  ```bash
+  cd simulator
+  go run main.go
+  ```
 
 ---
 
-## 📈 Service Level Objectives (SLOs)
+## 🧪 Comandos Úteis (Makefile & Scripts)
 
-Mais do que apenas coletar métricas, o Motor Logístico define objetivos claros de confiabilidade e performance que justificam as decisões arquiteturais (ex: uso de filas assíncronas e circuit breakers).
+| Comando | Descrição |
+|---|---|
+| `make up` | Sobe todos os containers da infraestrutura via Docker Compose |
+| `make down` | Encerra os containers e redes locais |
+| `make logs` | Visualiza logs unificados dos containers |
+| `make migrate-up` | Executa todas as migrações SQL pendentes (`migrations/`) |
+| `make migrate-down` | Reverte a última migração aplicada |
+| `make proto-gen` | Gera o código Go e TypeScript via Buf CLI (`proto/`) |
+| `make lint` | Executa `golangci-lint` na API e `eslint` no frontend Web |
 
-| Serviço | Indicador (SLI) | Objetivo (SLO) | Racional |
-|---|---|---|---|
-| **API Service** | Latência de Ingestão (p95) | `< 200ms` | O lojista não deve esperar para "criar" o pedido. A complexidade de roteamento é delegada ao Worker. |
-| **API Service** | Disponibilidade | `99.9%` | A API deve aceitar pedidos mesmo se o RabbitMQ ou o módulo de Despacho estiverem fora (fallback de segurança via Outbox). |
-| **Dispatch Worker** | Latência E2E (Create -> Dispatch) | `< 5s` | Tempo máximo aceitável para o entregador ser notificado após a criação do pedido. |
-| **Dispatch Worker** | Taxa de Sucesso | `> 99.5%` | Permite falhas transientes (recuperáveis via retries em backoff), mas dispara alertas no Prometheus caso existam erros persistentes ou *Poison Pills*. |
-
-> **Nota:** Os dashboards (Grafana) foram desenhados para monitorar a "saúde" desses SLOs de negócio (Golden Signals), e não apenas o consumo bruto de CPU/Memória.
+### Testes de Carga e Saturação (k6)
+O diretório `loadtest/` contém scripts para validação de resiliência e saturação sob alto volume:
+- `k6 run loadtest/create_order.js`: Teste de carga de criação contínua de pedidos com ramping de VUs.
+- `k6 run loadtest/gate14c_1000_orders.js`: Teste de saturação de 1.000 pedidos concorrentes.
+- `python3 loadtest/monitor_telemetry.py`: Monitor em tempo real de filas, conexões e Circuit Breaker.
+- `./loadtest/verify_consumer_idempotency_redelivery.sh`: Teste automatizado de redelivery e deduplicação.
 
 ---
 
-## ⚙️ Configuração (Environment Variables)
+## 🔐 Portas e Endpoints Padrão
 
-O sistema segue rigidamente a metodologia **12-Factor App**, não possuindo arquivos de configuração "hardcoded". Tudo é injetado no runtime via variáveis de ambiente.
-
-Abaixo estão as principais chaves mapeadas no `configs/configs.go`:
-
-| Variável | Descrição | Valor Padrão (Dev) |
+| Serviço | Porta Local | Protocolo / Descrição |
 |---|---|---|
-| `DB_HOST` | Host do PostgreSQL | `localhost` |
-| `DB_PORT` | Porta de acesso ao banco de dados | `5432` |
-| `RABBITMQ_HOST` | Host do broker RabbitMQ | `localhost` |
-| `REDIS_HOST` | Host do banco em memória (Geolocalização) | `localhost` |
-| `OTEL_SERVICE_NAME` | Nome do serviço de telemetria no Jaeger | `gofleet-api` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Endpoint do coletor OpenTelemetry | `localhost:4317` |
-| `WEB_SERVER_PORT` | Porta da API HTTP REST | `8000` |
-| `GRPC_PORT` | Porta do Servidor gRPC (Connect) | `50051` |
-
-*(Nota: Para a execução do ambiente de desenvolvimento local, a aplicação carrega automaticamente as credenciais a partir do arquivo `.env` via framework Viper).*
-
----
-
-## 🧪 Comandos Úteis (Makefile)
-
-A orquestração do fluxo de desenvolvimento (DX) é encapsulada através de um `Makefile` simples e direto:
-
-- `make proto`: Invoca a CLI do *Buf* para varrer a pasta de Protobuf e gerar o código Go e TypeScript das interfaces Connect RPC.
-- `make sqlc`: Analisa a pasta de *queries* SQL e gera o código *type-safe* Go do repositório (via Sqlc).
-- `make new-migration name=create_orders`: Instancia um arquivo *up* e *down* em branco para ser preenchido na pasta de migrations.
-- `make test`: Localiza e roda toda a suite de testes unitários do projeto (`go test`).
-- `make run-api`: Levanta o Monolito Localmente (certifique-se de que o *Postgres*, *Redis* e *RabbitMQ* estejam de pé pelo docker-compose).
+| **API Backend** | `8080` | Connect RPC / HTTP REST (`/metrics`, `/health`) |
+| **Web Portal** | `3001` | Dashboard Next.js / Mapa de Acompanhamento |
+| **PostgreSQL** | `5432` | Banco relacional com extensão PostGIS |
+| **Redis** | `6379` | Cache e índices geoespaciais |
+| **RabbitMQ AMQP** | `5672` | Protocolo de mensageria AMQP 0-9-1 |
+| **RabbitMQ UI** | `15672` | Painel de Gestão RabbitMQ |
+| **RabbitMQ Metrics** | `15692` | Endpoint Prometheus do RabbitMQ |
+| **Prometheus** | `9090` | Servidor de métricas e alertas |
+| **Grafana** | `3000` | Dashboards de telemetria unificada |
+| **Tempo (HTTP)** | `3200` | API e interface do Grafana Tempo |
+| **Loki (HTTP)** | `3100` | Ingestão e consulta de logs estruturados |
+| **OTel Collector** | `4317 / 4318` | Ingestão OTLP gRPC e HTTP |
