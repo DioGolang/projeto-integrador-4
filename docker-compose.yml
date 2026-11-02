@@ -169,9 +169,12 @@ services:
       - OSRM_URL=${OSRM_URL:-http://router.project-osrm.org/route/v1/driving}
       - MOTO_SPEED_KMH=${MOTO_SPEED_KMH:-36.0}
       - SIM_SPEED_FACTOR=${SIM_SPEED_FACTOR:-1.0}
+      - ENABLE_TELEMETRY=${ENABLE_TELEMETRY:-true}
+      - TELEMETRY_INTERVAL_MS=${TELEMETRY_INTERVAL_MS:-1000}
       - DELIVERER_EMAIL=${DELIVERER_EMAIL:-entregador@elo.com}
       - DELIVERER_PASSWORD=${DELIVERER_PASSWORD:-Entregador@123!}
       - DELIVERER_FINGERPRINT=${DELIVERER_FINGERPRINT:-simulator-deliverer-worker-1}
+      - MAX_SIMULATED_ORDERS=${MAX_SIMULATED_ORDERS:-0}
     depends_on:
       api:
         condition: service_started

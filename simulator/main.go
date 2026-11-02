@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -71,7 +72,20 @@ func main() {
 		log.Fatalf("Failed to bind queue: %v", err)
 	}
 
-	msgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
+	maxOrders := 0
+	if maxOrdersStr := os.Getenv("MAX_SIMULATED_ORDERS"); maxOrdersStr != "" {
+		if v, err := strconv.Atoi(maxOrdersStr); err == nil && v > 0 {
+			maxOrders = v
+			log.Printf("Simulator configured with MAX_SIMULATED_ORDERS=%d", maxOrders)
+		}
+	}
+
+	consumerTag := "simulator-worker"
+	if err := ch.Qos(100, 0, false); err != nil {
+		log.Printf("Warning: failed to set Qos: %v", err)
+	}
+
+	msgs, err := ch.Consume(q.Name, consumerTag, false, false, false, false, nil)
 	if err != nil {
 		log.Fatalf("Failed to register a consumer: %v", err)
 	}
@@ -124,26 +138,54 @@ func main() {
 	client := v1connect.NewLogisticsServiceClient(http.DefaultClient, apiURL, connect.WithInterceptors(authClient.Interceptor()))
 	router := routing.NewOSRMRouteProvider(os.Getenv("OSRM_URL"))
 
-	log.Printf("Simulator is running, waiting for OrderCreated events...")
+	var wg sync.WaitGroup
+	var orderCount int
+
+	log.Printf("Simulator is running, waiting for OrderCreated events (quota: %d)...", maxOrders)
 
 	for d := range msgs {
-		log.Printf("Received OrderCreated event")
+		if maxOrders > 0 && orderCount >= maxOrders {
+			log.Printf("[SIMULATOR] Quota reached, rejecting and requeuing surplus message")
+			_ = d.Nack(false, true)
+			_ = ch.Cancel(consumerTag, false)
+			break
+		}
+
 		var env struct {
 			Payload json.RawMessage `json:"payload"`
 		}
 		if err := json.Unmarshal(d.Body, &env); err != nil {
 			log.Printf("Failed to parse envelope: %v", err)
+			_ = d.Ack(false)
 			continue
 		}
 		var payload OutboxEventPayload
-		log.Printf("Payload raw: %s", string(env.Payload))
 		if err := json.Unmarshal(env.Payload, &payload); err != nil {
 			log.Printf("Failed to parse payload: %v", err)
+			_ = d.Ack(false)
 			continue
 		}
 
-		go simulateDelivery(client, router, payload)
+		_ = d.Ack(false)
+		orderCount++
+		log.Printf("[SIMULATOR] Order accepted for simulation (%d/%d): order_id=%s", orderCount, maxOrders, payload.OrderID)
+
+		wg.Add(1)
+		go func(p OutboxEventPayload) {
+			defer wg.Done()
+			simulateDelivery(client, router, p)
+		}(payload)
+
+		if maxOrders > 0 && orderCount >= maxOrders {
+			log.Printf("[SIMULATOR] Reached MAX_SIMULATED_ORDERS quota (%d). Canceling consumer.", maxOrders)
+			_ = ch.Cancel(consumerTag, false)
+			break
+		}
 	}
+
+	log.Printf("[SIMULATOR] Waiting for %d active deliveries to complete...", orderCount)
+	wg.Wait()
+	log.Printf("[SIMULATOR] All %d deliveries completed simulation successfully. Exiting cleanly.", orderCount)
 }
 
 func getMotorcycleSpeedMps() float64 {
@@ -169,6 +211,15 @@ func getSimulationSpeedFactor() float64 {
 	}
 	// Padrão: 1.0 (tempo real 1x baseado na duração estimada do trajeto)
 	return 1.0
+}
+
+func isTelemetryEnabled() bool {
+	enabledStr := os.Getenv("ENABLE_TELEMETRY")
+	if enabledStr == "false" || enabledStr == "0" {
+		return false
+	}
+	// Padrão de domínio: true (telemetria em tempo real ativada)
+	return true
 }
 
 func getTelemetryInterval() time.Duration {
@@ -228,15 +279,30 @@ func simulateLegMovement(
 	tickInterval time.Duration,
 	speedFactor float64,
 ) error {
-	traj, err := trajectory.NewTrajectory(route)
-	if err != nil {
-		return fmt.Errorf("failed to build trajectory for %s: %w", legName, err)
-	}
-
 	totalDuration := route.Duration
 	if totalDuration <= 0 {
 		motoSpeedMps := getMotorcycleSpeedMps()
 		totalDuration = time.Duration((route.Distance / motoSpeedMps) * float64(time.Second))
+	}
+
+	if !isTelemetryEnabled() {
+		log.Printf("[%s] Telemetry disabled (ENABLE_TELEMETRY=false). Simulating physical transit without GPS ticks: duration=%v (factor=%.1fx)",
+			legName, totalDuration, speedFactor)
+		scaledWait := time.Duration(float64(totalDuration) / speedFactor)
+		if scaledWait > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(scaledWait):
+			}
+		}
+		log.Printf("[%s] Arrived at destination (telemetry bypassed) after %v", legName, scaledWait)
+		return nil
+	}
+
+	traj, err := trajectory.NewTrajectory(route)
+	if err != nil {
+		return fmt.Errorf("failed to build trajectory for %s: %w", legName, err)
 	}
 
 	avgSpeedKmh := (route.Distance / totalDuration.Seconds()) * 3.6
