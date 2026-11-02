@@ -40,13 +40,14 @@ func (g *GapRecovery) Recover(ctx context.Context, aggregateID uuid.UUID, lastKn
 		}
 
 		// Apply with the original stream position!
-		if err := g.target.Apply(ctx, ev.DomainEvent, ev.StreamPosition); err != nil {
+		applied, err := g.target.Apply(ctx, ev.DomainEvent, ev.StreamPosition)
+		if err != nil {
 			return fmt.Errorf("failed to apply event during recovery: %w", err)
 		}
 
 		g.validator.Advance(aggregateID, seq)
 
-		if g.hub != nil {
+		if applied && g.hub != nil {
 			g.hub.Publish(ev)
 		}
 	}

@@ -7,5 +7,5 @@ import (
 )
 
 type Target interface {
-	Apply(ctx context.Context, ev delivery.DomainEvent, streamPosition int64) error
+	Apply(ctx context.Context, ev delivery.DomainEvent, streamPosition int64) (applied bool, err error)
 }

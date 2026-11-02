@@ -24,7 +24,9 @@ func NewSequenceValidator() *SequenceValidator {
 }
 
 func (v *SequenceValidator) Advance(aggregateID uuid.UUID, seq int64) {
-	v.lastSeqs[aggregateID] = seq
+	if current, ok := v.lastSeqs[aggregateID]; !ok || seq > current {
+		v.lastSeqs[aggregateID] = seq
+	}
 }
 
 func (v *SequenceValidator) Last(aggregateID uuid.UUID) (int64, bool) {

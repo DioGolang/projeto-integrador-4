@@ -25,8 +25,20 @@ func setupTestDB(t *testing.T) *sql.DB {
 	}
 
 	_, err = dbConn.Exec(`
+		DROP TABLE IF EXISTS processed_events CASCADE;
 		DROP TABLE IF EXISTS projection_checkpoints;
 		DROP TABLE IF EXISTS delivery_read_model;
+		CREATE TABLE processed_events (
+			consumer_id TEXT NOT NULL,
+			event_id TEXT NOT NULL,
+			processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			aggregate_id UUID NOT NULL,
+			sequence BIGINT NOT NULL,
+			event_type VARCHAR(100) NOT NULL,
+			payload_hash VARCHAR(64) NOT NULL,
+			PRIMARY KEY (consumer_id, event_id),
+			CONSTRAINT uq_processed_events_consumer_agg_seq UNIQUE (consumer_id, aggregate_id, sequence)
+		);
 		CREATE TABLE delivery_read_model (
 			delivery_id UUID PRIMARY KEY,
 			driver_id TEXT NOT NULL,
@@ -66,8 +78,12 @@ func TestDeliveryProjection_IdempotencyAndOrdering(t *testing.T) {
 		DriverID:   "driver-1",
 		Seq:        1,
 	}
-	if err := p.Apply(ctx, ev1, 100); err != nil {
+	applied, err := p.Apply(ctx, ev1, 100)
+	if err != nil {
 		t.Fatalf("unexpected err on created: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected applied=true for new delivery created")
 	}
 
 	// Read from db
@@ -91,8 +107,12 @@ func TestDeliveryProjection_IdempotencyAndOrdering(t *testing.T) {
 		DeliveryID: deliveryID,
 		Seq:        3,
 	}
-	if err := p.Apply(ctx, ev3, 101); err != nil {
+	applied, err = p.Apply(ctx, ev3, 101)
+	if err != nil {
 		t.Fatalf("unexpected err on seq 3: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected applied=true for new seq 3")
 	}
 
 	model, _ = q.GetDeliveryReadModel(ctx, deliveryID)
@@ -111,8 +131,12 @@ func TestDeliveryProjection_IdempotencyAndOrdering(t *testing.T) {
 		DeliveryID: deliveryID,
 		Seq:        2,
 	}
-	if err := p.Apply(ctx, ev2, 102); err != nil {
+	applied, err = p.Apply(ctx, ev2, 102)
+	if err != nil {
 		t.Fatalf("unexpected err on seq 2: %v", err)
+	}
+	if applied {
+		t.Fatalf("expected applied=false for delayed seq 2")
 	}
 
 	// Read again, should NOT have updated because 2 < 3!
@@ -131,8 +155,12 @@ func TestDeliveryProjection_IdempotencyAndOrdering(t *testing.T) {
 	}
 
 	// 4. Pure duplicate event: Seq 3 arrives again with older position
-	if err := p.Apply(ctx, ev3, 99); err != nil {
+	applied, err = p.Apply(ctx, ev3, 99)
+	if err != nil {
 		t.Fatalf("unexpected err on duplicate seq 3: %v", err)
+	}
+	if applied {
+		t.Fatalf("expected applied=false for duplicate seq 3")
 	}
 
 	model, _ = q.GetDeliveryReadModel(ctx, deliveryID)
@@ -169,7 +197,7 @@ func TestDeliveryProjection_RouteRevisionMonotonicity(t *testing.T) {
 		DropoffLat: -23.5590,
 		DropoffLng: -46.6400,
 	}
-	if err := p.Apply(ctx, evCreated, 1); err != nil {
+	if _, err := p.Apply(ctx, evCreated, 1); err != nil {
 		t.Fatalf("unexpected err on created: %v", err)
 	}
 
@@ -198,8 +226,12 @@ func TestDeliveryProjection_RouteRevisionMonotonicity(t *testing.T) {
 			EstimatedDurationMs: 120000,
 		},
 	}
-	if err := p.Apply(ctx, evRoute1, 2); err != nil {
+	appliedRoute1, err := p.Apply(ctx, evRoute1, 2)
+	if err != nil {
 		t.Fatalf("unexpected err on route rev 1: %v", err)
+	}
+	if !appliedRoute1 {
+		t.Fatalf("expected applied=true for new route revision 1")
 	}
 
 	model, err = q.GetDeliveryReadModel(ctx, deliveryID)
@@ -238,8 +270,12 @@ func TestDeliveryProjection_RouteRevisionMonotonicity(t *testing.T) {
 			EstimatedDurationMs: 240000,
 		},
 	}
-	if err := p.Apply(ctx, evRoute2, 3); err != nil {
+	appliedRoute2, err := p.Apply(ctx, evRoute2, 3)
+	if err != nil {
 		t.Fatalf("unexpected err on route rev 2: %v", err)
+	}
+	if !appliedRoute2 {
+		t.Fatalf("expected applied=true for new route revision 2")
 	}
 
 	model, _ = q.GetDeliveryReadModel(ctx, deliveryID)
@@ -270,8 +306,12 @@ func TestDeliveryProjection_RouteRevisionMonotonicity(t *testing.T) {
 			EstimatedDurationMs: 120000,
 		},
 	}
-	if err := p.Apply(ctx, evRoute1Delayed, 4); err != nil {
+	appliedDelayed, err := p.Apply(ctx, evRoute1Delayed, 4)
+	if err != nil {
 		t.Fatalf("unexpected err on delayed r1: %v", err)
+	}
+	if !appliedDelayed {
+		t.Fatalf("expected applied=true for seq 4 update")
 	}
 
 	model, _ = q.GetDeliveryReadModel(ctx, deliveryID)
@@ -287,8 +327,12 @@ func TestDeliveryProjection_RouteRevisionMonotonicity(t *testing.T) {
 
 	// 5. Duplicate event with sequence <= model.sequence (e.g. Seq 2 arrives again)
 	// Invariant: Rejected by WHERE sequence < newSeq, 0 rows modified
-	if err := p.Apply(ctx, evRoute1, 5); err != nil {
+	appliedDup, err := p.Apply(ctx, evRoute1, 5)
+	if err != nil {
 		t.Fatalf("unexpected err on duplicate r1: %v", err)
+	}
+	if appliedDup {
+		t.Fatalf("expected applied=false for duplicate/stale sequence")
 	}
 	model, _ = q.GetDeliveryReadModel(ctx, deliveryID)
 	if model.Sequence != 4 {
@@ -318,7 +362,7 @@ func TestDeliveryProjection_ConcurrentUpdatesAndDeduplication(t *testing.T) {
 		DropoffLat: -23.5590,
 		DropoffLng: -46.6400,
 	}
-	if err := p.Apply(ctx, evCreated, 1); err != nil {
+	if _, err := p.Apply(ctx, evCreated, 1); err != nil {
 		t.Fatalf("failed to create: %v", err)
 	}
 
@@ -338,7 +382,7 @@ func TestDeliveryProjection_ConcurrentUpdatesAndDeduplication(t *testing.T) {
 				DeliveryID: deliveryID,
 				Seq:        8,
 			}
-			_ = p.Apply(ctx, ev8, int64(100+workerID))
+			_, _ = p.Apply(ctx, ev8, int64(100+workerID))
 		}(i)
 
 		go func(workerID int) {
@@ -349,7 +393,7 @@ func TestDeliveryProjection_ConcurrentUpdatesAndDeduplication(t *testing.T) {
 				DeliveryID: deliveryID,
 				Seq:        9,
 			}
-			_ = p.Apply(ctx, ev9, int64(200+workerID))
+			_, _ = p.Apply(ctx, ev9, int64(200+workerID))
 		}(i)
 	}
 
@@ -393,7 +437,7 @@ func TestDeliveryProjection_ConcurrentIdempotency_IdenticalEvent(t *testing.T) {
 		DropoffLat: -23.5590,
 		DropoffLng: -46.6400,
 	}
-	if err := p.Apply(ctx, evCreated, 1); err != nil {
+	if _, err := p.Apply(ctx, evCreated, 1); err != nil {
 		t.Fatalf("failed to create: %v", err)
 	}
 
@@ -403,7 +447,7 @@ func TestDeliveryProjection_ConcurrentIdempotency_IdenticalEvent(t *testing.T) {
 		DeliveryID: deliveryID,
 		Seq:        2,
 	}
-	if err := p.Apply(ctx, ev2, 2); err != nil {
+	if _, err := p.Apply(ctx, ev2, 2); err != nil {
 		t.Fatalf("failed to apply seq 2: %v", err)
 	}
 
@@ -417,7 +461,7 @@ func TestDeliveryProjection_ConcurrentIdempotency_IdenticalEvent(t *testing.T) {
 		go func(workerID int) {
 			defer wg.Done()
 			<-startGate // Synchronized execution
-			_ = p.Apply(ctx, ev2, 2)
+			_, _ = p.Apply(ctx, ev2, 2)
 		}(i)
 	}
 

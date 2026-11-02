@@ -67,7 +67,11 @@ func NewConsumer(ch *amqp.Channel, target StreamProcessor, opts ...ConsumerOptio
 	return c
 }
 
+var ErrPoisonMessage = errors.New("poison message: envelope/payload validation failed")
+
 type envelope struct {
+	EventID        string          `json:"event_id"`
+	OutboxID       string          `json:"outbox_id,omitempty"`
 	AggregateID    uuid.UUID       `json:"aggregate_id"`
 	StreamPosition int64           `json:"stream_position"`
 	EventType      string          `json:"event_type"`
@@ -110,12 +114,70 @@ func (c *Consumer) HandleDelivery(ctx context.Context, d amqp.Delivery) error {
 		return fmt.Errorf("failed to unmarshal envelope: %w", err)
 	}
 
+	// Validate stream_position
+	if env.StreamPosition <= 0 {
+		err := fmt.Errorf("%w: invalid stream_position %d", ErrPoisonMessage, env.StreamPosition)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+		}
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: invalid stream_position rejected to DLQ",
+				logger.Any("stream_position", env.StreamPosition),
+				logger.WithError(err),
+			)
+		}
+		d.Reject(false)
+		return err
+	}
+
+	// Validate aggregate_id
+	if env.AggregateID == uuid.Nil {
+		err := fmt.Errorf("%w: aggregate_id is nil", ErrPoisonMessage)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+		}
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: nil aggregate_id rejected to DLQ", logger.WithError(err))
+		}
+		d.Reject(false)
+		return err
+	}
+
 	span.SetAttributes(
 		attribute.String("messaging.message.id", env.AggregateID.String()),
 		attribute.String("messaging.rabbitmq.routing_key", env.EventType),
 		attribute.String("app.event_type", env.EventType),
 		attribute.Int64("app.stream_position", env.StreamPosition),
 	)
+
+	// Check if payload contains an explicit event_type/type that disagrees with envelope
+	var rawMeta struct {
+		EventType string `json:"event_type"`
+		Type      string `json:"type"`
+	}
+	if err := json.Unmarshal(env.Payload, &rawMeta); err == nil {
+		payloadType := rawMeta.EventType
+		if payloadType == "" {
+			payloadType = rawMeta.Type
+		}
+		if payloadType != "" && payloadType != env.EventType {
+			err := fmt.Errorf("%w: envelope event_type '%s' != payload event_type '%s'", ErrPoisonMessage, env.EventType, payloadType)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			if c.metrics != nil {
+				c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+			}
+			if c.logger != nil {
+				c.logger.Error(consumerCtx, "Poison message: event_type mismatch rejected to DLQ", logger.WithError(err))
+			}
+			d.Reject(false)
+			return err
+		}
+	}
 
 	// Deserialize DomainEvent
 	var ev delivery.DomainEvent
@@ -216,12 +278,64 @@ func (c *Consumer) HandleDelivery(ctx context.Context, d amqp.Delivery) error {
 		}
 		ev = e
 	default:
+		err := fmt.Errorf("%w: unknown or incompatible event_type '%s'", ErrPoisonMessage, env.EventType)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if c.metrics != nil {
-			c.metrics.RecordConsumerEvent(env.EventType, "ack", d.Redelivered, time.Since(start))
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
 		}
-		span.SetStatus(codes.Ok, "ignored unknown event")
-		d.Ack(false) // Unknown event, ignore
-		return nil
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: unknown event_type rejected to DLQ",
+				logger.String("event_type", env.EventType),
+				logger.String("aggregate_id", env.AggregateID.String()),
+				logger.WithError(err),
+			)
+		}
+		d.Reject(false)
+		return err
+	}
+
+	// 4. Validate mandatory consistency between envelope and domain payload
+	if env.EventType != ev.EventName() {
+		err := fmt.Errorf("%w: envelope event_type '%s' != payload event_type '%s'", ErrPoisonMessage, env.EventType, ev.EventName())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+		}
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: event_type mismatch rejected to DLQ", logger.WithError(err))
+		}
+		d.Reject(false)
+		return err
+	}
+
+	if env.AggregateID != ev.AggregateID() {
+		err := fmt.Errorf("%w: envelope aggregate_id '%s' != payload aggregate_id '%s'", ErrPoisonMessage, env.AggregateID, ev.AggregateID())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+		}
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: aggregate_id mismatch rejected to DLQ", logger.WithError(err))
+		}
+		d.Reject(false)
+		return err
+	}
+
+	if env.EventID != "" && ev.EventID() != "" && env.EventID != ev.EventID() {
+		err := fmt.Errorf("%w: envelope event_id '%s' != payload event_id '%s'", ErrPoisonMessage, env.EventID, ev.EventID())
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.RecordConsumerEvent(env.EventType, "dlq", d.Redelivered, time.Since(start))
+		}
+		if c.logger != nil {
+			c.logger.Error(consumerCtx, "Poison message: event_id mismatch rejected to DLQ", logger.WithError(err))
+		}
+		d.Reject(false)
+		return err
 	}
 
 	streamEv := stream.Event{
@@ -233,7 +347,9 @@ func (c *Consumer) HandleDelivery(ctx context.Context, d amqp.Delivery) error {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
-		isUnrecoverable := errors.Is(err, stream.ErrUnrecoverableGap)
+		isUnrecoverable := errors.Is(err, stream.ErrUnrecoverableGap) ||
+			errors.Is(err, delivery.ErrIdentityConflict) ||
+			errors.Is(err, delivery.ErrCausalConflict)
 		if isUnrecoverable || d.Redelivered {
 			// Permanent failure or max retries reached: route to DLQ
 			if c.metrics != nil {

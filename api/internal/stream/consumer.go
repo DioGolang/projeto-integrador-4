@@ -30,39 +30,38 @@ func (c *Consumer) Process(ctx context.Context, ev Event) error {
 	// 1. Validate causal sequence
 	err := c.validator.Validate(aggID, seq)
 	if err != nil {
-		if errors.Is(err, ErrDuplicateEvent) {
-			// Already processed this sequence, just ACK
-			return nil
-		}
-
 		if errors.Is(err, ErrGapDetected) || errors.Is(err, ErrUnknownAggregate) {
 			lastKnown, _ := c.validator.Last(aggID) // will be 0 if unknown
 			if recErr := c.recovery.Recover(ctx, aggID, lastKnown); recErr != nil {
 				return fmt.Errorf("%w: gap recovery failed: %v", ErrUnrecoverableGap, recErr)
 			}
 
-			// After recovery, check if this event was already covered (it probably was, if it existed in the outbox)
+			// After recovery, re-check causal sequence
 			if validateAfter := c.validator.Validate(aggID, seq); validateAfter != nil {
-				if errors.Is(validateAfter, ErrDuplicateEvent) {
-					return nil
+				if !errors.Is(validateAfter, ErrDuplicateEvent) {
+					return fmt.Errorf("%w: event %d is still a gap after recovery: %v", ErrUnrecoverableGap, seq, validateAfter)
 				}
-				return fmt.Errorf("%w: event %d is still a gap after recovery: %v", ErrUnrecoverableGap, seq, validateAfter)
+				// If validateAfter is ErrDuplicateEvent, fall through to c.target.Apply to verify identity!
 			}
-		} else {
+		} else if !errors.Is(err, ErrDuplicateEvent) {
 			return err
 		}
+		// Notice: When err == ErrDuplicateEvent, we do NOT return nil!
+		// Historical and repeated sequence events must reach DeliveryProjection.Apply
+		// so that PostgreSQL verifies their persistent identity and semantic fingerprint.
 	}
 
 	// 2. Apply to Projection
-	if err := c.target.Apply(ctx, ev.DomainEvent, ev.StreamPosition); err != nil {
+	applied, err := c.target.Apply(ctx, ev.DomainEvent, ev.StreamPosition)
+	if err != nil {
 		return fmt.Errorf("failed to apply projection: %w", err)
 	}
 
 	// 3. Advance Validator
 	c.validator.Advance(aggID, seq)
 
-	// 4. Publish Live Notification
-	if c.hub != nil {
+	// 4. Publish Live Notification (only if event was newly applied)
+	if applied && c.hub != nil {
 		c.hub.Publish(ev)
 	}
 

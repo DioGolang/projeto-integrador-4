@@ -281,8 +281,13 @@ func main() {
 	}
 	defer ch.Close()
 
+	if err := ch.Confirm(false); err != nil {
+		appLogger.Error(context.Background(), "Failed to put RabbitMQ channel in confirm mode", logger.WithError(err))
+		os.Exit(1)
+	}
+
 	// Start Outbox Worker
-	outboxWorker := worker.NewOutboxWorker(database, db.New(database), appLogger, ch, worker.WithMetrics(appMetrics))
+	outboxWorker := worker.NewOutboxWorker(database, db.New(database), appLogger, worker.WrapChannel(ch), worker.WithMetrics(appMetrics))
 	go outboxWorker.Start(ctx)
 
 	// Stream Consumer Pipeline:
