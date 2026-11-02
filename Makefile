@@ -5,11 +5,36 @@
 .DEFAULT_GOAL := help
 SHELL         := /usr/bin/env bash
 
-# Configurações e Variáveis
+# Carrega variáveis do arquivo .env se ele existir (sem falhar se não existir)
+ENV_FILE ?= .env
+ifneq (,$(wildcard $(ENV_FILE)))
+    include $(ENV_FILE)
+    export $(shell sed -e 's/=.*//' -e '/^#/d' -e '/^$$/d' $(ENV_FILE))
+endif
+
+# Constantes e Valores Padrão (utilizam variáveis do .env se definidas)
+POSTGRES_USER     ?= root
+POSTGRES_PASSWORD ?= password
+POSTGRES_HOST     ?= localhost
+POSTGRES_PORT     ?= 5432
+POSTGRES_DB       ?= logistics
+
+REDIS_HOST        ?= localhost
+REDIS_PORT        ?= 6379
+
+RABBITMQ_USER     ?= root
+RABBITMQ_PASSWORD ?= password
+RABBITMQ_HOST     ?= localhost
+RABBITMQ_PORT     ?= 5672
+
+API_PORT          ?= 8080
+WEB_PORT          ?= 3001
+
+# Ferramentas e Caminhos
 DOCKER_COMPOSE ?= $(shell which docker-compose 2>/dev/null || echo "docker compose")
 GO             ?= go
 MIGRATIONS_DIR ?= migrations/
-DB_URL         ?= postgres://root:password@localhost:5432/logistics?sslmode=disable
+DB_URL         ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 TEST_TIMEOUT   ?= 120s
 
 .PHONY: help \
@@ -21,13 +46,27 @@ TEST_TIMEOUT   ?= 120s
 	build build-api build-simulator build-web \
 	run-api run-simulator run-web \
 	lint lint-api lint-web fmt tidy clean \
-	gen proto-gen buf-lint sqlc-gen
+	gen proto-gen buf-lint sqlc-gen env-info
 
-##@ 📖 Ajuda
+##@ 📖 Ajuda & Informações
 help: ## Exibe este menu de ajuda organizado por categorias
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mComandos disponíveis:\033[0m\n"} \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 } \
 		/^##@/ { printf "\n\033[1;33m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+env-info: ## Exibe as variáveis e constantes de conexão ativas carregadas do .env
+	@echo "=================================================="
+	@echo " Ambiente e Constantes do Makefile"
+	@echo "=================================================="
+	@echo " Arquivo de Ambiente : $(ENV_FILE)"
+	@echo " PostgreSQL Host     : $(POSTGRES_HOST):$(POSTGRES_PORT)"
+	@echo " PostgreSQL DB/User  : $(POSTGRES_DB) / $(POSTGRES_USER)"
+	@echo " DB URL de Migrações : postgres://$(POSTGRES_USER):****@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+	@echo " Redis Host          : $(REDIS_HOST):$(REDIS_PORT)"
+	@echo " RabbitMQ Host/User  : $(RABBITMQ_HOST):$(RABBITMQ_PORT) / $(RABBITMQ_USER)"
+	@echo " API Port            : $(API_PORT)"
+	@echo " Web Portal Port     : $(WEB_PORT)"
+	@echo "=================================================="
 
 ##@ 🚀 Docker & Infraestrutura
 up: ## Sobe toda a infraestrutura em background via Docker Compose
@@ -60,8 +99,8 @@ logs-db: ## Acompanha os logs exclusivos do PostgreSQL/PostGIS
 logs-rabbitmq: ## Acompanha os logs exclusivos do RabbitMQ
 	$(DOCKER_COMPOSE) logs -f rabbitmq
 
-db-shell: ## Abre sessão interativa psql no contêiner do PostgreSQL
-	$(DOCKER_COMPOSE) exec postgres psql -U root -d logistics
+db-shell: ## Abre sessão interativa psql no contêiner do PostgreSQL com o usuário configurado
+	$(DOCKER_COMPOSE) exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
 redis-cli: ## Abre interface interativa redis-cli no contêiner do Redis
 	$(DOCKER_COMPOSE) exec redis redis-cli
@@ -154,7 +193,8 @@ lint-web: ## Executa o linter ESLint no módulo Web
 	cd web && npm run lint
 
 fmt: ## Formata todo o código Go do projeto
-	$(GO) fmt ./api/... ./simulator/...
+	cd api && $(GO) fmt ./...
+	cd simulator && $(GO) fmt ./...
 
 tidy: ## Sincroniza e limpa as dependências go.mod de todos os módulos
 	cd api && $(GO) mod tidy
