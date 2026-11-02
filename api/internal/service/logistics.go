@@ -212,7 +212,12 @@ func (s *LogisticsService) AcceptDelivery(
 			return err
 		}
 
-		if order.DelivererID.Valid && order.DelivererID.UUID != userCtx.UserID {
+		if order.DelivererID.Valid {
+			if order.DelivererID.UUID == userCtx.UserID {
+				// Idempotent retry: order is already assigned to this deliverer.
+				// Return success early without mutating state or creating duplicate DeliveryCreated events.
+				return nil
+			}
 			return connect.NewError(connect.CodeFailedPrecondition, errors.New("order is already assigned to another deliverer"))
 		}
 		if order.Status.OrderStatus != db.OrderStatusCREATED && order.Status.OrderStatus != db.OrderStatusDISPATCHED {
@@ -922,7 +927,7 @@ func (s *LogisticsService) CompleteDelivery(
 			return seqErr
 		}
 
-		_ = q.UpdateDeliveryReadModel(ctx, db.UpdateDeliveryReadModelParams{
+		_, _ = q.UpdateDeliveryReadModel(ctx, db.UpdateDeliveryReadModelParams{
 			DeliveryID: orderUUID,
 			State:      string(db.OrderStatusDELIVERED),
 			Sequence:   seq,

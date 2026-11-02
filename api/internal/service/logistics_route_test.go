@@ -528,7 +528,7 @@ func TestLogisticsService_StreamOrderStatus_RouteDelivery(t *testing.T) {
 	routeBytes, _ := json.Marshal(routePayload)
 
 	// Seed read model with active_route
-	err = q.InsertDeliveryReadModel(ctx, db.InsertDeliveryReadModelParams{
+	_, err = q.InsertDeliveryReadModel(ctx, db.InsertDeliveryReadModelParams{
 		DeliveryID:  deliveryID,
 		DriverID:    "driver-stream-test",
 		State:       delivery.StateAtPickup,

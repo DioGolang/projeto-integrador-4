@@ -432,7 +432,7 @@ func TestLogisticsService_Authorization_StreamOrderStatus_ResourceRelationship(t
 
 	// Seed read model snapshot so the server sends an immediate snapshot frame upon subscription
 	q := db.New(dbConn)
-	_ = q.InsertDeliveryReadModel(ctx, db.InsertDeliveryReadModelParams{
+	_, _ = q.InsertDeliveryReadModel(ctx, db.InsertDeliveryReadModelParams{
 		DeliveryID: orderID,
 		DriverID:   delivererAID.String(),
 		State:      delivery.StateCreated,
@@ -632,6 +632,64 @@ func TestLogisticsService_AcceptDelivery_HighConcurrency(t *testing.T) {
 	}
 	if outboxCount != 1 {
 		t.Fatalf("CRITICAL OUTBOX DUPLICATION: expected exactly 1 DeliveryCreated event in outbox, got %d", outboxCount)
+	}
+}
+
+func TestLogisticsService_AcceptDelivery_IdempotentRetry(t *testing.T) {
+	dbConn := openTestDB(t)
+	defer dbConn.Close()
+
+	_, client, jwtMgr := setupAuthLogisticsTestServer(t, dbConn)
+	ctx := context.Background()
+
+	merchantID := uuid.New()
+	seedUserAndProfile(t, dbConn, merchantID, "MERCHANT", "ACTIVE")
+
+	delivererID := uuid.New()
+	seedUserAndProfile(t, dbConn, delivererID, "DELIVERER", "ACTIVE")
+	delivererToken, err := jwtMgr.GenerateAccessToken(auth.CustomClaims{
+		UserID: delivererID.String(),
+		Role:   "DELIVERER",
+		Status: "ACTIVE",
+	})
+	if err != nil {
+		t.Fatalf("failed to generate deliverer token: %v", err)
+	}
+
+	orderID := uuid.New()
+	_, err = dbConn.Exec(`
+		INSERT INTO orders (id, merchant_id, customer_name, destination, status, package_size, delivery_fee)
+		VALUES ($1, $2, 'Idempotent Customer', ST_SetSRID(ST_MakePoint(-46.64, -23.56), 4326), 'CREATED', 'SMALL', 15.00)
+	`, orderID, merchantID)
+	if err != nil {
+		t.Fatalf("failed to seed created order: %v", err)
+	}
+
+	req1 := connect.NewRequest(&pb.AcceptDeliveryRequest{OrderId: orderID.String()})
+	req1.Header().Set("Authorization", "Bearer "+delivererToken)
+
+	res1, err := client.AcceptDelivery(ctx, req1)
+	if err != nil || !res1.Msg.Success {
+		t.Fatalf("first AcceptDelivery failed: %v", err)
+	}
+
+	// 2. Immediate Retry by the exact same deliverer
+	req2 := connect.NewRequest(&pb.AcceptDeliveryRequest{OrderId: orderID.String()})
+	req2.Header().Set("Authorization", "Bearer "+delivererToken)
+
+	res2, err := client.AcceptDelivery(ctx, req2)
+	if err != nil || !res2.Msg.Success {
+		t.Fatalf("idempotent retry AcceptDelivery failed: %v", err)
+	}
+
+	// Verify Outbox: MUST still have EXACTLY 1 DeliveryCreated event
+	var outboxCount int
+	err = dbConn.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = $1 AND event_type = 'DeliveryCreated'", orderID).Scan(&outboxCount)
+	if err != nil {
+		t.Fatalf("failed to count outbox events: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("IDEMPOTENCY FAILURE: expected exactly 1 DeliveryCreated event in outbox, got %d", outboxCount)
 	}
 }
 

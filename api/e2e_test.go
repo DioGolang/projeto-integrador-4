@@ -77,7 +77,7 @@ func (p *failingProjection) failedCalls() int {
 	return p.calls
 }
 
-func (p *failingProjection) Apply(ctx context.Context, ev delivery.DomainEvent, pos int64) error {
+func (p *failingProjection) Apply(ctx context.Context, ev delivery.DomainEvent, pos int64) (bool, error) {
 	p.mu.Lock()
 	fail := p.fail
 	if fail {
@@ -86,7 +86,7 @@ func (p *failingProjection) Apply(ctx context.Context, ev delivery.DomainEvent, 
 	p.mu.Unlock()
 	if fail {
 		time.Sleep(20 * time.Millisecond) // avoid a hot NACK/requeue loop
-		return errors.New("simulated projection failure")
+		return false, errors.New("simulated projection failure")
 	}
 	return p.inner.Apply(ctx, ev, pos)
 }
@@ -111,6 +111,9 @@ func startPipeline(t *testing.T, dbConn *sql.DB, conn *amqp.Connection) *pipelin
 	relayCh, err := conn.Channel()
 	if err != nil {
 		t.Fatalf("relay channel: %v", err)
+	}
+	if err := relayCh.Confirm(false); err != nil {
+		t.Fatalf("relay channel confirm: %v", err)
 	}
 	t.Cleanup(func() {
 		cancel()
@@ -162,7 +165,7 @@ func startPipeline(t *testing.T, dbConn *sql.DB, conn *amqp.Connection) *pipelin
 		}
 	}()
 
-	go worker.NewOutboxWorker(dbConn, queries, logg, relayCh).Start(ctx)
+	go worker.NewOutboxWorker(dbConn, queries, logg, worker.WrapChannel(relayCh)).Start(ctx)
 
 	mux := http.NewServeMux()
 	pinMgr, _ := auth.NewHMACPINManager([]byte("gofleet-secure-test-pin-hmac-secret-32bytes!"))
