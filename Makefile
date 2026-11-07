@@ -1,5 +1,5 @@
 # ==============================================================================
-# PROJETO INTEGRADOR 4 - PLATAFORMA DE LOGÍSTICA EM TEMPO REAL
+# PROJETO INTEGRADOR 6 - PLATAFORMA DE LOGÍSTICA EM TEMPO REAL
 # ==============================================================================
 
 .DEFAULT_GOAL := help
