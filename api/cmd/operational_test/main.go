@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	pb "github.com/dvasconcellos/elo/api/gen/logistics/v1"
 	"github.com/dvasconcellos/elo/api/gen/logistics/v1/v1connect"
+	authpkg "github.com/dvasconcellos/elo/api/pkg/client"
 )
 
 func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
@@ -31,13 +32,29 @@ func main() {
 		apiURL = "http://localhost:8080"
 	}
 
-	client := v1connect.NewLogisticsServiceClient(http.DefaultClient, apiURL)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	log.Println("===============================================================================")
 	log.Println("TESTE OPERACIONAL DO SISTEMA COMPLETO (Simulador -> API -> Stream -> UI)")
 	log.Println("===============================================================================")
+
+	// Autenticação do lojista (Zero Trust)
+	authClient, err := authpkg.NewAuthClient(authpkg.Config{
+		BaseURL:           apiURL,
+		Email:             "loja@elo.com",
+		Password:          "Merchant@123!",
+		DeviceFingerprint: "operational-test-merchant",
+	})
+	if err != nil {
+		log.Fatalf("ERRO ao inicializar cliente de autenticação: %v", err)
+	}
+	if err := authClient.Login(ctx); err != nil {
+		log.Fatalf("ERRO ao autenticar como lojista (loja@elo.com): %v", err)
+	}
+	log.Println("✔ Lojista autenticado com sucesso (Bearer token obtido)")
+
+	client := v1connect.NewLogisticsServiceClient(http.DefaultClient, apiURL, connect.WithInterceptors(authClient.Interceptor()))
 
 	// 1. Create order
 	log.Println("\n[1/5] Criando novo pedido de despacho...")

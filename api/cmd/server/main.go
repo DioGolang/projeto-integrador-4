@@ -310,11 +310,16 @@ func main() {
 	}
 	defer consumerCh.Close()
 
+	consumeCtx, cancelConsume := context.WithCancel(context.Background())
+	defer cancelConsume()
+
 	rabbitConsumer := rabbitmq.NewConsumer(
 		consumerCh,
 		strConsumer,
 		rabbitmq.WithConsumerMetrics(appMetrics),
 		rabbitmq.WithConsumerLogger(appLogger),
+		rabbitmq.WithConsumerTag(projectionConsumerTag),
+		rabbitmq.WithConsumerDrainTimeout(5*time.Second),
 	)
 
 	messages, err := declareProjectionTopology(consumerCh)
@@ -323,22 +328,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-messages:
-				if !ok {
-					appLogger.Error(context.Background(), "Projection consumer channel closed")
-					return
-				}
-				if err := rabbitConsumer.HandleDelivery(ctx, msg); err != nil {
-					appLogger.Error(context.Background(), "Consumer failed to handle delivery", logger.WithError(err))
-				}
-			}
-		}
-	}()
+	if err := rabbitConsumer.Start(consumeCtx, messages); err != nil {
+		appLogger.Error(context.Background(), "Failed to start rabbitmq projection consumer", logger.WithError(err))
+		os.Exit(1)
+	}
 
 	// 7. Server Instantiation
 	srv := NewServer(
@@ -364,6 +357,15 @@ func main() {
 	// 10. Graceful Shutdown Execution
 	stop()
 	appLogger.Info(context.Background(), "Shutdown signal received, initiating graceful shutdown...")
+
+	// 10.1 Stop accepting new messages and drain in-flight delivery within 5-second window
+	cancelConsume()
+	consumerDrainCtx, cancelDrain := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelDrain()
+
+	if err := rabbitConsumer.Stop(consumerDrainCtx); err != nil {
+		appLogger.Warn(context.Background(), "Projection consumer stopped with warning", logger.WithError(err))
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
