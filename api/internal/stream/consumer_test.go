@@ -32,6 +32,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		DROP TABLE IF EXISTS outbox_events;
 		DROP TABLE IF EXISTS projection_checkpoints;
 		DROP TABLE IF EXISTS delivery_read_model;
+		DELETE FROM processed_events;
 		CREATE TABLE delivery_read_model (
 			delivery_id UUID PRIMARY KEY,
 			driver_id TEXT NOT NULL,

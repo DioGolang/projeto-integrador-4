@@ -2,6 +2,7 @@ package rabbitmq
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -158,11 +159,11 @@ func TestConsumer_HandleDelivery(t *testing.T) {
 		}
 	})
 
-	t.Run("records_nack_metric_when_target_processing_fails_transiently", func(t *testing.T) {
+	t.Run("suspends_consumer_and_preserves_delivery_when_target_processing_fails_with_unknown_error", func(t *testing.T) {
 		ack := &mockAcknowledger{}
 		proc := &mockProcessor{
 			processFunc: func(ctx context.Context, ev stream.Event) error {
-				return errors.New("database locked")
+				return errors.New("unexpected unclassified error")
 			},
 		}
 		metricsSpy := &mockConsumerMetrics{}
@@ -173,7 +174,7 @@ func TestConsumer_HandleDelivery(t *testing.T) {
 			Acknowledger: ack,
 			DeliveryTag:  2,
 			Body:         envBody,
-			Redelivered:  false, // First attempt: transient
+			Redelivered:  false,
 		}
 
 		err := consumer.HandleDelivery(context.Background(), delivery)
@@ -181,29 +182,44 @@ func TestConsumer_HandleDelivery(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		if ack.nackCount != 1 || !ack.lastNackRequeue {
-			t.Errorf("expected 1 Nack with requeue=true, got nackCount=%d, requeue=%v", ack.nackCount, ack.lastNackRequeue)
+		// Gate 1.5B-4C: Erro desconhecido não deve dar Nack, não deve dar Reject (DLQ)
+		if ack.nackCount != 0 || ack.rejectCount != 0 || ack.ackCount != 0 {
+			t.Errorf("expected delivery preserved unacknowledged, got nackCount=%d, rejectCount=%d, ackCount=%d",
+				ack.nackCount, ack.rejectCount, ack.ackCount)
+		}
+
+		if !consumer.IsSuspended() {
+			t.Errorf("expected consumer to be suspended")
 		}
 
 		if len(metricsSpy.events) != 1 {
 			t.Fatalf("expected 1 metric event, got %d", len(metricsSpy.events))
 		}
 		recorded := metricsSpy.events[0]
-		if recorded.eventType != "DeliveryCreated" || recorded.status != "nack" || recorded.redelivered != false {
+		if recorded.eventType != "DeliveryCreated" || recorded.status != "suspended" || recorded.redelivered != false {
 			t.Errorf("unexpected metric record: %+v", recorded)
 		}
 	})
 
-	t.Run("routes_to_dlq_when_target_fails_on_redelivered_message", func(t *testing.T) {
+	t.Run("does_not_route_to_dlq_when_target_fails_on_redelivered_message", func(t *testing.T) {
 		ack := &mockAcknowledger{}
+		attempts := 0
 		proc := &mockProcessor{
 			processFunc: func(ctx context.Context, ev stream.Event) error {
-				return errors.New("database still locked")
+				attempts++
+				if attempts == 1 {
+					return driver.ErrBadConn
+				}
+				return nil
 			},
 		}
 		metricsSpy := &mockConsumerMetrics{}
+		fastBackoff := NewBackoffCalculator(1*time.Millisecond, 2*time.Millisecond, nil)
 
-		consumer := NewConsumer(nil, proc, WithConsumerMetrics(metricsSpy))
+		consumer := NewConsumer(nil, proc,
+			WithConsumerMetrics(metricsSpy),
+			WithConsumerBackoff(fastBackoff),
+		)
 
 		delivery := amqp.Delivery{
 			Acknowledger: ack,
@@ -213,20 +229,23 @@ func TestConsumer_HandleDelivery(t *testing.T) {
 		}
 
 		err := consumer.HandleDelivery(context.Background(), delivery)
-		if err == nil {
-			t.Fatal("expected error, got nil")
+		if err != nil {
+			t.Fatalf("expected success after retry, got: %v", err)
 		}
 
-		if ack.rejectCount != 1 || ack.lastRejectRequeue {
-			t.Errorf("expected 1 Reject with requeue=false (DLQ), got rejectCount=%d, requeue=%v", ack.rejectCount, ack.lastRejectRequeue)
+		// Gate 1.5B-4C: Redelivered=true não deve provocar DLQ (Reject=0, Ack=1)
+		if ack.rejectCount != 0 {
+			t.Errorf("expected 0 Reject, got rejectCount=%d", ack.rejectCount)
+		}
+		if ack.ackCount != 1 {
+			t.Errorf("expected 1 Ack after in-place retry, got ackCount=%d", ack.ackCount)
 		}
 
-		if len(metricsSpy.events) != 1 {
-			t.Fatalf("expected 1 metric event, got %d", len(metricsSpy.events))
+		if len(metricsSpy.events) != 2 {
+			t.Fatalf("expected 2 metric events (retry, ack), got %d", len(metricsSpy.events))
 		}
-		recorded := metricsSpy.events[0]
-		if recorded.eventType != "DeliveryCreated" || recorded.status != "dlq" || recorded.redelivered != true {
-			t.Errorf("unexpected metric record: %+v", recorded)
+		if metricsSpy.events[0].status != "retry" || metricsSpy.events[1].status != "ack" {
+			t.Errorf("unexpected metric records: %+v", metricsSpy.events)
 		}
 	})
 
