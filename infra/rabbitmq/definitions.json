@@ -1,0 +1,38 @@
+{
+  "rabbit_version": "4.3.5",
+  "users": [
+    {
+      "name": "root",
+      "password": "password",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "root",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "DLX_Policy",
+      "pattern": "^api\\.delivery_projection$",
+      "apply-to": "queues",
+      "definition": {
+        "dead-letter-exchange": "logistics.events.dlx"
+      },
+      "priority": 0
+    }
+  ]
+}

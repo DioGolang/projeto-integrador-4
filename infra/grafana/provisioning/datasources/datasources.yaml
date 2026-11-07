@@ -6,7 +6,7 @@ datasources:
     type: prometheus
     url: http://prometheus:9090
     access: proxy
-    isDefault: true
+    isDefault: false
     jsonData:
       httpMethod: POST
       timeInterval: 5s
@@ -16,6 +16,7 @@ datasources:
     type: tempo
     url: http://tempo:3200
     access: proxy
+    isDefault: true
     jsonData:
       tracesToLogsV2:
         datasourceUid: 'loki'
