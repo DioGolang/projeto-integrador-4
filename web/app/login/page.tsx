@@ -27,7 +27,7 @@ const authClient = createClient(AuthService, transport);
 export default function LoginPage() {
   const [role, setRole] = useState<"MERCHANT" | "DRIVER">("MERCHANT");
   const [email, setEmail] = useState("loja@elo.com");
-  const [password, setPassword] = useState("123456");
+  const [password, setPassword] = useState("Merchant@123!");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -37,10 +37,10 @@ export default function LoginPage() {
     setError("");
     if (newRole === "MERCHANT") {
       setEmail("loja@elo.com");
-      setPassword("123456");
+      setPassword("Merchant@123!");
     } else {
-      setEmail("carlos.moto@elo.com");
-      setPassword("123456");
+      setEmail("entregador@elo.com");
+      setPassword("Entregador@123!");
     }
   };
 
@@ -50,42 +50,27 @@ export default function LoginPage() {
     setError("");
 
     try {
+      const resp = await authClient.login({ email, password });
+      if (!resp.token) {
+        throw new Error("Token não retornado pela API");
+      }
+
       if (role === "MERCHANT") {
-        const resp = await authClient.login({ email, password });
         localStorage.setItem("merchantToken", resp.token);
-        localStorage.setItem("merchantId", resp.merchantId);
-        localStorage.setItem("merchantLat", resp.merchantLat.toString());
-        localStorage.setItem("merchantLng", resp.merchantLng.toString());
+        localStorage.setItem("merchantId", resp.merchantId || "d81bc2a9-63a4-4f3e-8c0c-2a3f4e783d0c");
+        localStorage.setItem("merchantLat", (resp.merchantLat || -23.5505).toString());
+        localStorage.setItem("merchantLng", (resp.merchantLng || -46.6333).toString());
         localStorage.setItem("merchantEmail", email);
         localStorage.setItem("merchantStoreName", "Loja Centro SP");
         router.push("/dashboard");
       } else {
-        // Driver login demo session
-        localStorage.setItem("driverToken", "driver-jwt-carlos-160");
-        localStorage.setItem("driverName", "Carlos Eduardo (Fan 160)");
+        localStorage.setItem("driverToken", resp.token);
+        localStorage.setItem("driverName", "Entregador Oficial");
         localStorage.setItem("driverEmail", email);
-        // Also provide merchant credentials so the full dashboard can be explored
-        if (!localStorage.getItem("merchantToken")) {
-          localStorage.setItem("merchantToken", "demo-token-" + Date.now());
-          localStorage.setItem("merchantId", "d81bc2a9-63a4-4f3e-8c0c-2a3f4e783d0c");
-          localStorage.setItem("merchantLat", "-23.5505");
-          localStorage.setItem("merchantLng", "-46.6333");
-        }
         router.push("/dashboard");
       }
     } catch (err: any) {
-      // Se houver erro de rede no backend, faz fallback transparente com credenciais locais
-      if (email === "loja@elo.com" || email === "carlos.moto@elo.com") {
-        localStorage.setItem("merchantToken", "offline-demo-token");
-        localStorage.setItem("merchantId", "d81bc2a9-63a4-4f3e-8c0c-2a3f4e783d0c");
-        localStorage.setItem("merchantLat", "-23.5505");
-        localStorage.setItem("merchantLng", "-46.6333");
-        localStorage.setItem("merchantEmail", email);
-        localStorage.setItem("merchantStoreName", role === "MERCHANT" ? "Loja Centro SP" : "Carlos Motoboy");
-        router.push("/dashboard");
-      } else {
-        setError(err.message || "Falha ao realizar login. Verifique seus dados.");
-      }
+      setError(err?.message || "Falha ao realizar login. Verifique seus dados.");
     } finally {
       setLoading(false);
     }

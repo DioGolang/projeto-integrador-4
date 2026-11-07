@@ -30,9 +30,8 @@ export default function DashboardPage() {
       setMerchantEmail(savedEmail);
       setMerchantName(savedName);
 
-      if (!token) {
-        // Se não tiver token, configura sessão de demonstração para acesso direto
-        localStorage.setItem("merchantToken", "demo-token-" + Date.now());
+      if (!token || token.startsWith("demo-token-") || token === "offline-demo-token") {
+        localStorage.removeItem("merchantToken");
         localStorage.setItem("merchantId", "d81bc2a9-63a4-4f3e-8c0c-2a3f4e783d0c");
         localStorage.setItem("merchantLat", "-23.5505");
         localStorage.setItem("merchantLng", "-46.6333");
